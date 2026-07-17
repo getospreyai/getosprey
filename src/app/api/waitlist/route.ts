@@ -12,7 +12,7 @@ const sql = connectionString ? neon(connectionString) : null;
 
 // Ensure the table exists once per cold start.
 let schemaReady = false;
-async function ensureSchema(db: ReturnType<typeof neon>) {
+async function ensureSchema(db: NonNullable<typeof sql>) {
   if (schemaReady) return;
   await db`
     CREATE TABLE IF NOT EXISTS waitlist (
