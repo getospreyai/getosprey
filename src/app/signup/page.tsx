@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useState, FormEvent, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import Backdrop from "@/components/Backdrop";
 
 type Status = "idle" | "submitting" | "error";
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  // Invite links look like /signup?invite=CODE — prefill the gate field.
+  const searchParams = useSearchParams();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState(searchParams.get("invite") ?? "");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -25,7 +28,7 @@ export default function SignupPage() {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, inviteCode }),
       });
       const data = await res.json();
 
@@ -84,6 +87,13 @@ export default function SignupPage() {
           <p className="mt-3 text-center text-sm text-white/60">
             Set your buy box once. Osprey does the underwriting.
           </p>
+          <p className="mt-2 text-center text-xs text-white/40">
+            Invite-only during early access —{" "}
+            <Link href="/#join" className="underline hover:text-white/70">
+              join the waitlist
+            </Link>{" "}
+            if you don&apos;t have a code.
+          </p>
 
           <form
             onSubmit={handleSubmit}
@@ -119,6 +129,14 @@ export default function SignupPage() {
                 placeholder="Password (min. 8 characters)"
                 className={fieldClass}
               />
+              <input
+                type="text"
+                required
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="Invite code"
+                className={fieldClass}
+              />
 
               <button
                 type="submit"
@@ -143,5 +161,14 @@ export default function SignupPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function SignupPage() {
+  // useSearchParams requires a Suspense boundary for static rendering.
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }

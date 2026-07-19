@@ -43,6 +43,21 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
+
+  // Pre-launch gate: signups are invite-only. With SIGNUP_INVITE_CODE unset,
+  // signups are closed entirely; delete the env var at public launch.
+  const inviteRequired = process.env.SIGNUP_INVITE_CODE;
+  const inviteGiven =
+    typeof body?.inviteCode === "string" ? body.inviteCode.trim() : "";
+  if (!inviteRequired || inviteGiven !== inviteRequired) {
+    return NextResponse.json(
+      {
+        error:
+          "Osprey is invite-only right now — join the waitlist at getosprey.ai and we'll reach out.",
+      },
+      { status: 403 }
+    );
+  }
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const emailRaw = typeof body?.email === "string" ? body.email.trim() : "";
   const email = emailRaw.toLowerCase();
