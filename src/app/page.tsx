@@ -123,8 +123,8 @@ export default function Home() {
           <div>
             <PhoneDemo />
             <p className="mt-4 text-center text-xs text-white/40">
-              Illustrative property. The numbers are live output from
-              Osprey&apos;s underwriting engine — not a mockup of one.
+              Fictional property, real math — every figure is live output from
+              Osprey&apos;s underwriting engine.
             </p>
           </div>
         </div>
