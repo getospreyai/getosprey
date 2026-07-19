@@ -1,6 +1,9 @@
-// A rendered SMS thread showing a real Osprey verdict. Every number comes
-// from the underwriting engine's actual output for this sample deal —
-// $415k fourplex, $3,850/mo est. rent, 25% down conventional @ 6.75%.
+// A rendered SMS thread showing an Osprey verdict. The financials are genuine
+// output from the underwriting engine for these inputs ($415k fourplex,
+// $3,850/mo est. rent, 25% down conventional @ 6.75%), but the property is
+// illustrative — the address is fictional on purpose. Never put a real
+// address on this page: pairing a specific property with hypothetical
+// financials reads as a representation about that property.
 
 function OspreyBubble({ children }: { children: React.ReactNode }) {
   return (
@@ -31,12 +34,16 @@ export default function PhoneDemo() {
             🦅
           </span>
           <span className="text-xs font-medium text-white/80">Osprey</span>
+          <span className="mt-1 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-[10px] uppercase tracking-wide text-white/50">
+            Sample deal
+          </span>
         </div>
 
         {/* thread */}
         <div className="flex flex-col gap-2.5">
           <OspreyBubble>
-            🦅 New match: Fourplex · 2847 Sunrise Ave, Las Vegas — $415,000
+            🦅 New match: Fourplex · 1400 Kestrel Hollow Ct, Las Vegas —
+            $415,000
             <br />
             At your 25% down conventional:{" "}
             <span className="font-semibold text-emerald-300">+$633/mo</span>{" "}
