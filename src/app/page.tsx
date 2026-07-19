@@ -135,12 +135,20 @@ export default function Home() {
           <NavLogo />
           <span className="text-sm font-semibold tracking-tight">Osprey</span>
         </div>
-        <a
-          href="mailto:hello@getosprey.ai"
-          className="text-sm text-white/60 transition hover:text-white"
-        >
-          Need help?
-        </a>
+        <div className="flex items-center gap-5">
+          <a
+            href="/login"
+            className="text-sm text-white/60 transition hover:text-white"
+          >
+            Log in
+          </a>
+          <a
+            href="mailto:hello@getosprey.ai"
+            className="text-sm text-white/60 transition hover:text-white"
+          >
+            Need help?
+          </a>
+        </div>
       </nav>
 
       {/* hero */}

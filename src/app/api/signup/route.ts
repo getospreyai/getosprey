@@ -1,0 +1,99 @@
+import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import { sql, ensureSchema, hasDb } from "@/lib/db";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface PgError {
+  code?: string;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as PgError).code === "23505";
+}
+
+function defaultProfile(userId: string, name: string) {
+  return {
+    id: userId,
+    name,
+    buyBox: {
+      states: ["NV"],
+      cities: [],
+      propertyTypes: ["single_family", "duplex", "triplex", "fourplex"],
+      minPrice: 150000,
+      maxPrice: 600000,
+      maxDaysOnMarket: 7,
+    },
+    financingProfiles: [
+      { kind: "conventional", downPct: 0.25, rate: 0.0675 },
+      { kind: "dscr", downPct: 0.2, rate: 0.0725, minDscr: 1 },
+    ],
+    assumptions: { taxRatePct: 0.006 },
+    minMonthlyCashFlow: 200,
+  };
+}
+
+export async function POST(req: NextRequest) {
+  if (!hasDb() || !sql) {
+    console.error("Signup: DATABASE_URL is not configured.");
+    return NextResponse.json(
+      { error: "Signup is temporarily unavailable. Please try again later." },
+      { status: 503 }
+    );
+  }
+
+  const body = await req.json().catch(() => null);
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  const emailRaw = typeof body?.email === "string" ? body.email.trim() : "";
+  const email = emailRaw.toLowerCase();
+  const password = typeof body?.password === "string" ? body.password : "";
+
+  if (!name) {
+    return NextResponse.json({ error: "Enter your name." }, { status: 400 });
+  }
+  if (!email || !EMAIL_RE.test(email)) {
+    return NextResponse.json(
+      { error: "Enter a valid email address." },
+      { status: 400 }
+    );
+  }
+  if (password.length < 8) {
+    return NextResponse.json(
+      { error: "Password must be at least 8 characters." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    await ensureSchema();
+
+    const userId = crypto.randomUUID();
+    const passwordHash = await bcrypt.hash(password, 10);
+    const profile = defaultProfile(userId, name);
+
+    await sql.transaction([
+      sql`
+        INSERT INTO users (id, email, password_hash, name)
+        VALUES (${userId}, ${email}, ${passwordHash}, ${name})
+      `,
+      sql`
+        INSERT INTO investor_profiles (user_id, profile)
+        VALUES (${userId}, ${JSON.stringify(profile)}::jsonb)
+      `,
+    ]);
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return NextResponse.json(
+        { error: "An account with that email already exists." },
+        { status: 409 }
+      );
+    }
+    console.error("Signup failed:", err);
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
+  }
+}
