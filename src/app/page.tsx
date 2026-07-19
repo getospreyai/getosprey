@@ -2,6 +2,14 @@ import WaitlistForm from "@/components/WaitlistForm";
 import Backdrop from "@/components/Backdrop";
 import PhoneDemo from "@/components/PhoneDemo";
 
+// ---------------------------------------------------------------------------
+// Brand mark. Switch variants by changing this one constant:
+//   "video"   — looping video mark (public/logo-osprey.mp4)
+//   "lineart" — hand-drawn raptor-head line icon
+//   "feather" — the original feather icon
+// ---------------------------------------------------------------------------
+const LOGO_VARIANT: "video" | "lineart" | "feather" = "feather";
+
 function FeatherIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -18,6 +26,57 @@ function FeatherIcon({ className }: { className?: string }) {
       <line x1="16" y1="8" x2="2" y2="22" />
       <line x1="17.5" y1="15" x2="9" y2="15" />
     </svg>
+  );
+}
+
+function RaptorIcon({ className }: { className?: string }) {
+  // Line-art raptor head (side profile, hooked beak) — a stroke rendering of
+  // the 🦅 mark in the same visual language as the rest of the icon set.
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M7 19 C 5.6 14.4 5.8 10 8 8.2 C 9.8 6.8 12.6 6.6 14.9 7.2 C 18.3 7.4 20.6 8.8 20.7 10.3 L 18.5 12.7 L 17.5 11.5 L 14.3 12.7 C 12.6 13.5 12 15.5 12 19" />
+      <circle cx="13.9" cy="9.4" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Small inline brand icon used in badges and list headings. */
+function OspreyIcon({ className }: { className?: string }) {
+  return LOGO_VARIANT === "feather" ? (
+    <FeatherIcon className={className} />
+  ) : (
+    <RaptorIcon className={className} />
+  );
+}
+
+/** The nav logo chip — the one place the video variant renders as video. */
+function NavLogo() {
+  if (LOGO_VARIANT === "video") {
+    return (
+      <video
+        src="/logo-osprey.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        aria-hidden
+        className="h-7 w-7 rounded-lg object-cover"
+      />
+    );
+  }
+  return (
+    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-violet-200">
+      <OspreyIcon className="h-4 w-4" />
+    </span>
   );
 }
 
@@ -73,9 +132,7 @@ export default function Home() {
       {/* nav */}
       <nav className="relative z-10 flex items-center justify-between px-6 py-6 sm:px-10">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-violet-200">
-            <FeatherIcon className="h-4 w-4" />
-          </span>
+          <NavLogo />
           <span className="text-sm font-semibold tracking-tight">Osprey</span>
         </div>
         <a
@@ -91,7 +148,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
           <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
             <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-xs text-violet-100 backdrop-blur-md">
-              <FeatherIcon className="h-3.5 w-3.5" />
+              <OspreyIcon className="h-3.5 w-3.5" />
               Launching first in Nevada · Single-family to fourplex
             </span>
 
@@ -190,7 +247,7 @@ export default function Home() {
             </div>
             <div className="rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-6 shadow-[0_0_45px_rgba(139,124,255,0.15)] backdrop-blur-md">
               <h3 className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide text-violet-200">
-                <FeatherIcon className="h-4 w-4" /> Osprey
+                <OspreyIcon className="h-4 w-4" /> Osprey
               </h3>
               <ul className="mt-4 space-y-3 text-sm text-white/85">
                 {ospreyPoints.map((p) => (
