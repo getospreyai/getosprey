@@ -106,7 +106,7 @@ const steps = [
   },
   {
     title: "You get the verdict",
-    body: "One text with the number that matters: monthly cash flow at your financing. Clears your bar, you hear about it. Doesn't, you don't.",
+    body: "One Telegram message with the number that matters: monthly cash flow at your financing. Clears your bar, you hear about it. Doesn't, you don't.",
   },
 ];
 
@@ -121,7 +121,7 @@ const ospreyPoints = [
   "Only deals that clear your cash-flow bar",
   "Underwritten before it hits your phone",
   "Your down payment, your rate, your loan",
-  "Lives in your texts — reply to dig in",
+  "Lives in Telegram — one tap to dig in",
 ];
 
 export default function Home() {
@@ -162,10 +162,10 @@ export default function Home() {
             <p className="mt-5 max-w-xl text-balance text-base text-white/60 sm:text-lg">
               Osprey is an AI deal-finder for real-estate investors. It watches
               the market, underwrites every listing at{" "}
-              <span className="text-white/85">your</span> financing, and texts
-              you only when a property clears your cash-flow bar. No dashboards
-              to babysit. No midnight spreadsheets. Just a text when a deal is
-              worth your time.
+              <span className="text-white/85">your</span> financing, and
+              messages you only when a property clears your cash-flow bar. No
+              dashboards to babysit. No midnight spreadsheets. Just a Telegram
+              message when a deal is worth your time.
             </p>
 
             <div id="join" className="mt-8 w-full max-w-md scroll-mt-24">

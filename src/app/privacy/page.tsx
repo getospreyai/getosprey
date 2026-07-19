@@ -63,8 +63,8 @@ export default function PrivacyPolicy() {
           <ul className="mt-2 list-disc space-y-1 pl-6">
             <li>
               Send you updates, announcements, and marketing communications
-              about Osprey via text message (SMS/MMS), phone call, and/or
-              email
+              about Osprey via messaging apps (such as Telegram), text
+              message (SMS/MMS), phone call, and/or email
             </li>
             <li>Notify you about our product launch and new features</li>
             <li>
@@ -74,11 +74,11 @@ export default function PrivacyPolicy() {
             <li>Comply with legal obligations</li>
           </ul>
           <p className="mt-2">
-            Osprey is designed as a phone-first product, and we prioritize
-            phone numbers as our primary means of contacting waitlist
-            members. If you provide a phone number, you may receive
-            recurring marketing text messages and/or calls from us or our
-            service providers acting on our behalf.
+            Osprey is designed as a messaging-first product, delivered
+            primarily through messaging apps such as Telegram. If you
+            provide a phone number, you may also receive recurring
+            marketing text messages and/or calls from us or our service
+            providers acting on our behalf.
           </p>
         </section>
 
@@ -117,8 +117,9 @@ export default function PrivacyPolicy() {
           <p className="mt-2">
             We do not sell your personal information. We may share your
             information with third-party service providers who perform
-            services on our behalf, such as SMS/text messaging platforms,
-            email delivery providers, and analytics providers, solely for
+            services on our behalf, such as messaging platforms (including
+            Telegram), SMS/text messaging providers, email delivery
+            providers, and analytics providers, solely for
             the purposes described in this policy. We may also disclose
             information if required to do so by law or in connection with a
             merger, acquisition, or sale of assets.
