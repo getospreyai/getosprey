@@ -20,8 +20,9 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Osprey — Join the Waitlist",
-  description: "Be first in line when Osprey launches.",
+  title: "Osprey — Deal verdicts by text, not listings",
+  description:
+    "Osprey is an AI deal-finder for real-estate investors. It underwrites every new listing at your financing and texts you only when a deal clears your cash-flow bar. Join the waitlist.",
 };
 
 export default function RootLayout({
