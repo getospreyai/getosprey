@@ -43,7 +43,18 @@ export default async function OnboardingPage() {
             </p>
           </div>
         ) : (
-          <OnboardingWizard userId={userId} />
+          <OnboardingWizard
+            userId={userId}
+            initialConnected={profile.telegramChatId != null}
+            saved={{
+              propertyTypes: profile.buyBox.propertyTypes,
+              minPrice: profile.buyBox.minPrice ?? null,
+              maxPrice: profile.buyBox.maxPrice ?? null,
+              maxDaysOnMarket: profile.buyBox.maxDaysOnMarket ?? null,
+              financingProfiles: profile.financingProfiles,
+              minMonthlyCashFlow: profile.minMonthlyCashFlow,
+            }}
+          />
         )}
       </section>
     </main>

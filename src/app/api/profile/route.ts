@@ -10,6 +10,12 @@ import { hasDb } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import { PatchProfileSchema, mergeProfileSettings } from "@/lib/profile-schema";
 
+// The onboarding wizard polls GET to detect the Telegram binding — the
+// response must never be cached anywhere along the way.
+export const dynamic = "force-dynamic";
+
+const NO_STORE = { headers: { "Cache-Control": "no-store, max-age=0" } };
+
 export async function GET() {
   const session = await auth();
   const userId = session?.user?.id;
@@ -27,10 +33,10 @@ export async function GET() {
   const store = new PgStore();
   const profile = await store.loadProfile(userId);
   if (!profile) {
-    return NextResponse.json({ error: "Profile not found." }, { status: 404 });
+    return NextResponse.json({ error: "Profile not found." }, { status: 404, ...NO_STORE });
   }
 
-  return NextResponse.json(profile);
+  return NextResponse.json(profile, NO_STORE);
 }
 
 export async function PATCH(req: NextRequest) {
@@ -64,7 +70,9 @@ export async function PATCH(req: NextRequest) {
 
   const merged = mergeProfileSettings(stored, parsed.data);
 
-  await store.saveProfile(merged);
+  // Settings-only write: never touches telegram_chat_id, so a save racing a
+  // fresh /start binding can't clobber the connection.
+  await store.saveProfileSettings(merged);
 
-  return NextResponse.json(merged);
+  return NextResponse.json(merged, NO_STORE);
 }

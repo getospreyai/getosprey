@@ -78,7 +78,38 @@ interface OnboardingPayload {
   financingProfiles: FinancingProfile[];
 }
 
-export default function OnboardingWizard({ userId }: { userId: string }) {
+/** Wizard progress previously saved server-side (via the step-3 PATCH),
+ *  passed down so a page reload can resume instead of restarting. */
+export interface SavedProgress {
+  propertyTypes: PropertyType[];
+  minPrice: number | null;
+  maxPrice: number | null;
+  maxDaysOnMarket: number | null;
+  financingProfiles: FinancingProfile[];
+  minMonthlyCashFlow: number;
+}
+
+const STORAGE_KEY = "osprey-onboarding-v1";
+
+interface StoredState {
+  step: 1 | 2 | 3;
+  propertyTypes: PropertyType[];
+  minPrice: string;
+  maxPrice: string;
+  maxDaysOnMarket: string;
+  financingProfiles: FinancingProfile[];
+  minMonthlyCashFlow: string;
+}
+
+export default function OnboardingWizard({
+  userId,
+  initialConnected = false,
+  saved = null,
+}: {
+  userId: string;
+  initialConnected?: boolean;
+  saved?: SavedProgress | null;
+}) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [phase, setPhase] = useState<Phase>("form");
   const [errorMsg, setErrorMsg] = useState("");
@@ -97,8 +128,70 @@ export default function OnboardingWizard({ userId }: { userId: string }) {
 
   // Step 3 — Telegram
   const [savingStep3, setSavingStep3] = useState(false);
-  const [telegramConnected, setTelegramConnected] = useState(false);
+  const [telegramConnected, setTelegramConnected] = useState(initialConnected);
   const [finishing, setFinishing] = useState(false);
+
+  // Resume after a reload: sessionStorage first (exact in-progress state),
+  // else server-saved progress (survives new tabs / cleared storage). Runs
+  // once on mount, after hydration, so SSR markup stays deterministic.
+  const hydrated = useRef(false);
+  // One-shot post-mount restore. Reading sessionStorage in a lazy useState
+  // initializer would desync SSR and client HTML (hydration mismatch), so
+  // the setState-after-mount pattern is deliberate here.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (hydrated.current) return;
+    hydrated.current = true;
+
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw) as StoredState;
+        setStep(s.step);
+        setPropertyTypes(s.propertyTypes ?? []);
+        setMinPrice(s.minPrice ?? "");
+        setMaxPrice(s.maxPrice ?? "");
+        setMaxDaysOnMarket(s.maxDaysOnMarket ?? "");
+        setFinancingProfiles(s.financingProfiles ?? []);
+        setMinMonthlyCashFlow(s.minMonthlyCashFlow ?? "0");
+        return;
+      }
+    } catch {
+      // corrupted storage — fall through to server-saved progress
+    }
+
+    if (saved && saved.propertyTypes.length > 0 && saved.financingProfiles.length > 0) {
+      // They made it to step 3 before (the step-3 PATCH saved this) — resume there.
+      setPropertyTypes(saved.propertyTypes);
+      setMinPrice(saved.minPrice == null ? "" : String(saved.minPrice));
+      setMaxPrice(saved.maxPrice == null ? "" : String(saved.maxPrice));
+      setMaxDaysOnMarket(saved.maxDaysOnMarket == null ? "" : String(saved.maxDaysOnMarket));
+      setFinancingProfiles(saved.financingProfiles);
+      setMinMonthlyCashFlow(String(saved.minMonthlyCashFlow));
+      setStep(3);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Persist progress so a reload never restarts the wizard.
+  useEffect(() => {
+    if (!hydrated.current) return;
+    try {
+      const s: StoredState = {
+        step,
+        propertyTypes,
+        minPrice,
+        maxPrice,
+        maxDaysOnMarket,
+        financingProfiles,
+        minMonthlyCashFlow,
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    } catch {
+      // storage unavailable (private mode etc.) — server-saved progress still covers reloads
+    }
+  }, [step, propertyTypes, minPrice, maxPrice, maxDaysOnMarket, financingProfiles, minMonthlyCashFlow]);
 
   // Results
   const [scan, setScan] = useState<ScanSummary | null>(null);
@@ -177,7 +270,9 @@ export default function OnboardingWizard({ userId }: { userId: string }) {
 
     const poll = async () => {
       try {
-        const res = await fetch("/api/profile");
+        // Cache-busting query param + no-store: this response must always be
+        // fresh or the "Connected ✓" flip never happens.
+        const res = await fetch(`/api/profile?t=${Date.now()}`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json().catch(() => null);
         if (data?.telegramChatId != null) setTelegramConnected(true);
@@ -214,6 +309,12 @@ export default function OnboardingWizard({ userId }: { userId: string }) {
         setPhase("error");
         setErrorMsg(data?.error ?? "Something went wrong. Try again.");
         return;
+      }
+
+      try {
+        sessionStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // non-fatal
       }
 
       if (data?.scan) {

@@ -59,6 +59,24 @@ export class PgStore implements Store {
     `;
   }
 
+  /**
+   * Update the profile blob WITHOUT touching telegram_chat_id. That column is
+   * owned by the webhook's /start binding — a settings save racing a fresh
+   * binding must never clobber it back to null. Web routes (settings PATCH,
+   * onboarding complete) use this; saveProfile remains for the agent paths
+   * that legitimately carry the chat id.
+   */
+  async saveProfileSettings(profile: InvestorProfile): Promise<void> {
+    const db = requireSql();
+    const { telegramChatId: _ignored, ...rest } = profile;
+    void _ignored;
+    await db`
+      UPDATE investor_profiles
+      SET profile = ${JSON.stringify(rest)}::jsonb, updated_at = now()
+      WHERE user_id = ${profile.id}
+    `;
+  }
+
   async findProfileByChatId(chatId: number): Promise<InvestorProfile | null> {
     const db = requireSql();
     const rows = (await db`

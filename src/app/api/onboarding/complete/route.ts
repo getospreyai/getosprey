@@ -70,7 +70,12 @@ export async function POST(req: NextRequest) {
     onboarded: true,
     initialScanAt: new Date().toISOString(),
   };
-  await store.saveProfile(profile);
+  // Settings-only write — telegram_chat_id is owned by the webhook binding.
+  await store.saveProfileSettings(profile);
+
+  // Re-read the binding after the save: the user may have tapped /start in
+  // Telegram seconds ago, and the scan below should deliver to them if so.
+  profile.telegramChatId = (await store.loadProfile(userId))?.telegramChatId ?? null;
 
   const rentcastKey = process.env.RENTCAST_API_KEY;
   if (!rentcastKey) {
