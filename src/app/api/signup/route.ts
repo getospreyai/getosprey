@@ -16,20 +16,14 @@ function defaultProfile(userId: string, name: string) {
   return {
     id: userId,
     name,
+    onboarded: false,
     buyBox: {
       states: ["NV"],
       cities: [],
-      propertyTypes: ["single_family", "duplex", "triplex", "fourplex"],
-      minPrice: 150000,
-      maxPrice: 600000,
-      maxDaysOnMarket: 7,
+      propertyTypes: [],
     },
-    financingProfiles: [
-      { kind: "conventional", downPct: 0.25, rate: 0.0675 },
-      { kind: "dscr", downPct: 0.2, rate: 0.0725, minDscr: 1 },
-    ],
-    assumptions: { taxRatePct: 0.006 },
-    minMonthlyCashFlow: 200,
+    financingProfiles: [],
+    minMonthlyCashFlow: 0,
   };
 }
 

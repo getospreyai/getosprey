@@ -60,6 +60,10 @@ export default async function DashboardPage() {
     ]);
   }
 
+  if (profile && profile.onboarded === false) {
+    redirect("/onboarding");
+  }
+
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#0a0718] text-white">
       <Backdrop />

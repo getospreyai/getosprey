@@ -36,4 +36,9 @@ export interface InvestorProfile {
   tasteNotes?: string[];
   /** When true, the loop logs verdicts to the ledger but never texts. */
   alertsPaused?: boolean;
+  /** False until the onboarding wizard completes. Undefined (CLI/file
+   *  profiles predating this field) is treated as onboarded. */
+  onboarded?: boolean;
+  /** ISO timestamp of the onboarding wizard's first scan, set once. */
+  initialScanAt?: string;
 }

@@ -19,6 +19,10 @@ export default async function SettingsPage() {
   const dbReady = hasDb();
   const profile = dbReady ? await new PgStore().loadProfile(userId) : null;
 
+  if (profile && profile.onboarded === false) {
+    redirect("/onboarding");
+  }
+
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#0a0718] text-white">
       <Backdrop />

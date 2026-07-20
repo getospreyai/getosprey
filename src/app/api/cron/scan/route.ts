@@ -39,7 +39,17 @@ export async function GET(req: NextRequest) {
     const state = process.env.OSPREY_STATE || "NV";
 
     const batch = await fetchBatch(rentcast, { city, state, daysOld: 1 });
-    const profiles = await store.loadAllProfiles();
+    const allProfiles = await store.loadAllProfiles();
+    // Skip half-configured profiles: onboarded === false is explicitly mid-wizard
+    // (undefined covers legacy/CLI profiles predating onboarding, which are
+    // considered onboarded); an empty buy box or financing list has nothing
+    // to underwrite against.
+    const profiles = allProfiles.filter(
+      (p) =>
+        p.onboarded !== false &&
+        p.financingProfiles.length > 0 &&
+        p.buyBox.propertyTypes.length > 0
+    );
     const profileById = new Map(profiles.map((p) => [p.id, p]));
 
     // runScan skips ids already in `seen`; markSeen only the ones that were
