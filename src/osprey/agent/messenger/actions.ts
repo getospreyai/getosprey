@@ -6,6 +6,7 @@
 import type { InvestorProfile } from "../model";
 import type { VerdictRecord } from "../loop";
 import type { Intent } from "./intents";
+import { AI_DISCLAIMER } from "@/lib/legal";
 
 const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 
@@ -163,7 +164,8 @@ export function executeIntent(
         reply:
           `I text you underwritten deals that clear your cash-flow bar (currently ${money(profile.minMonthlyCashFlow)}/mo).\n` +
           `Reply A for the full breakdown, P to pass (add a reason and I learn), S to save, R for a client-ready research report (PDF).\n` +
-          `Or just tell me things: "bump my max to 450k" · "only text me $300/mo+" · "what are the taxes on that one"`,
+          `Or just tell me things: "bump my max to 450k" · "only text me $300/mo+" · "what are the taxes on that one"\n` +
+          AI_DISCLAIMER,
       };
     }
 

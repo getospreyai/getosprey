@@ -15,6 +15,7 @@ import type {
 import type { RentComparable } from "@/lib/rent-comparables";
 import { showClearingRateLine } from "@/lib/property-insights";
 import { formatMoney, formatPct, formatSignedMoney, formatSignedMonthly } from "@/lib/format";
+import { DISCLAIMER_SHORT } from "@/lib/legal";
 import {
   createPdfCursor,
   draw,
@@ -286,7 +287,9 @@ export async function dealPacketPdf(input: DealPacketInput): Promise<Uint8Array>
   statRow(c, "Annual income growth", formatPct(a.annualIncomeGrowthPct * 100, 1));
   statRow(c, "Annual expense growth", formatPct(a.annualExpenseGrowthPct * 100, 1));
 
-  footerOnEveryPage(c, `Prepared by ${input.preparedBy} with Osprey · getosprey.ai`);
+  // Forwarded to lenders/co-investors as a standalone file — the disclaimer
+  // must travel with it, not just live on the web page it was generated from.
+  footerOnEveryPage(c, [`Prepared by ${input.preparedBy} with Osprey · getosprey.ai`, DISCLAIMER_SHORT]);
 
   return c.doc.save();
 }

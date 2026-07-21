@@ -178,10 +178,23 @@ export function sectionHeading(c: PdfCursor, title: string): void {
   gap(c, 3);
 }
 
-export function footerOnEveryPage(c: PdfCursor, text: string): void {
-  const safe = sanitizeForPdf(text);
+/** Prints one or more lines pinned to the bottom margin of every page —
+ *  the "Prepared by ..." attribution plus the compliance disclaimer every
+ *  packet/report footer carries. Each logical line runs through `wrap()`
+ *  (which sanitizes for WinAnsi too) so it degrades to a second line
+ *  instead of running off the page edge; lines stack upward from the same
+ *  baseline a single-line footer used to sit at. */
+export function footerOnEveryPage(c: PdfCursor, lines: string | string[]): void {
+  const size = 8;
+  const lineH = size * 1.35;
+  const physical = (Array.isArray(lines) ? lines : [lines]).flatMap((line) =>
+    wrap(line, c.font, size, CONTENT_W),
+  );
   for (const p of c.doc.getPages()) {
-    p.drawText(safe, { x: MARGIN, y: MARGIN - 24, size: 8, font: c.font, color: MUTED });
+    physical.forEach((line, i) => {
+      const y = MARGIN - 24 + (physical.length - 1 - i) * lineH;
+      p.drawText(line, { x: MARGIN, y, size, font: c.font, color: MUTED });
+    });
   }
 }
 

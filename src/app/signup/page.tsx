@@ -150,6 +150,18 @@ function SignupForm() {
             {status === "error" && (
               <p className="mt-3 text-sm text-red-400">{errorMsg}</p>
             )}
+
+            <p className="mt-3 text-center text-xs text-white/40">
+              By creating an account, you agree to our{" "}
+              <Link href="/terms" className="underline hover:text-white/70">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="underline hover:text-white/70">
+                Privacy Policy
+              </Link>
+              .
+            </p>
           </form>
 
           <p className="mt-6 text-center text-sm text-white/50">

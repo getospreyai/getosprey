@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import Link from "next/link";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
@@ -96,9 +97,13 @@ export default function WaitlistForm() {
 
       <p className="mt-4 text-center text-xs text-white/40">
         By joining, you agree to our{" "}
-        <a href="/privacy" className="underline hover:text-white/70">
+        <Link href="/terms" className="underline hover:text-white/70">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" className="underline hover:text-white/70">
           Privacy Policy
-        </a>{" "}
+        </Link>{" "}
         and consent to receive marketing calls, texts, and emails from Osprey.
       </p>
     </form>

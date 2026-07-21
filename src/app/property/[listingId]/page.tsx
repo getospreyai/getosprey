@@ -13,6 +13,7 @@ import ProjectionTable from "@/components/ProjectionTable";
 import ScenarioStudio from "@/components/ScenarioStudio";
 import ReportPanel from "@/components/ReportPanel";
 import ShareCard from "@/components/ShareCard";
+import LegalDisclaimer from "@/components/LegalDisclaimer";
 import { hasDb } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import { bestUnderwriting } from "@/lib/best-underwriting";
@@ -261,6 +262,8 @@ export default async function PropertyPage({
       )}
 
       <ShareCard listingId={listingId} initialUrl={existingShare ? `/r/${existingShare.token}` : null} />
+
+      <LegalDisclaimer />
     </Shell>
   );
 }

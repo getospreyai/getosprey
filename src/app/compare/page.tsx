@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
+import LegalDisclaimer from "@/components/LegalDisclaimer";
 import { hasDb } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import { bestUnderwriting } from "@/lib/best-underwriting";
@@ -216,6 +217,8 @@ export default async function ComparePage({
           </tbody>
         </table>
       </div>
+
+      <LegalDisclaimer />
     </Shell>
   );
 }

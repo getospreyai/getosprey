@@ -15,6 +15,7 @@ import {
   INK,
   MUTED,
 } from "./pdf-kit";
+import { DISCLAIMER_SHORT } from "@/lib/legal";
 
 export interface ReportPdfMeta {
   /** Property address for the header. */
@@ -56,7 +57,7 @@ export async function reportToPdf(
   section("Negotiation Angles", report.negotiationAngles);
   section("Bottom Line", report.bottomLine);
 
-  footerOnEveryPage(c, `Prepared by ${meta.preparedBy} with Osprey · getosprey.ai`);
+  footerOnEveryPage(c, [`Prepared by ${meta.preparedBy} with Osprey · getosprey.ai`, DISCLAIMER_SHORT]);
 
   return c.doc.save();
 }

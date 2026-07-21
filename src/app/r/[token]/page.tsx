@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Backdrop from "@/components/Backdrop";
 import UnderwritingBreakdown from "@/components/UnderwritingBreakdown";
@@ -7,6 +8,7 @@ import Section8Card from "@/components/Section8Card";
 import PriceHistory from "@/components/PriceHistory";
 import MaxOfferCard from "@/components/MaxOfferCard";
 import ProjectionTable from "@/components/ProjectionTable";
+import LegalDisclaimer from "@/components/LegalDisclaimer";
 import { ensureSchema, hasDb } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import { bestUnderwriting } from "@/lib/best-underwriting";
@@ -17,6 +19,13 @@ import { project, toIncomeInput, toPropertyInput } from "@/osprey/engine";
 import { ReportSchema } from "@/osprey/reports/generate";
 
 const cardClass = "rounded-2xl border border-white/10 bg-white/[0.05] p-8 text-center backdrop-blur-md";
+
+// Unlisted, not unindexed by default — the privacy policy (§10) promises
+// search engines are asked not to index share links, so every /r/[token]
+// page opts out regardless of whether the token resolves.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 /** Public, read-only property report — the brokerage-ICP demo feature. No
  *  auth, no scenario studio, no actions: a realtor forwards this link as-is. */
@@ -194,6 +203,8 @@ export default async function PublicReportPage({
           </div>
         </div>
       )}
+
+      <LegalDisclaimer />
     </Shell>
   );
 }

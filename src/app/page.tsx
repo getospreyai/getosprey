@@ -1,3 +1,4 @@
+import Link from "next/link";
 import WaitlistForm from "@/components/WaitlistForm";
 import Backdrop from "@/components/Backdrop";
 import PhoneDemo from "@/components/PhoneDemo";
@@ -335,9 +336,15 @@ export default function Home() {
 
       <footer className="relative z-10 flex flex-col items-center gap-1 px-6 pb-8 text-xs text-white/40">
         <p>&copy; {new Date().getFullYear()} Osprey. All rights reserved.</p>
-        <a href="/privacy" className="underline hover:text-white/70">
-          Privacy Policy
-        </a>
+        <p>
+          <Link href="/terms" className="underline hover:text-white/70">
+            Terms of Service
+          </Link>{" "}
+          ·{" "}
+          <Link href="/privacy" className="underline hover:text-white/70">
+            Privacy Policy
+          </Link>
+        </p>
       </footer>
     </main>
   );

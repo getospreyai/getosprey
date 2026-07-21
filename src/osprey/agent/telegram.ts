@@ -216,6 +216,7 @@ async function handleStart(
     chatId,
     `🪶 Linked, ${target.name}. Osprey will message verdicts here.\n\n` +
       'On any deal: A = full analysis · P = pass (add a reason and I learn your taste) · ' +
-      'S = save · R = research report (PDF). Plain English works too — "bump my max to 450k". HELP anytime.',
+      'S = save · R = research report (PDF). Plain English works too — "bump my max to 450k". HELP anytime.\n\n' +
+      'Plain-English replies are AI-generated and may be inaccurate — verdicts are informational only, not advice.',
   );
 }
