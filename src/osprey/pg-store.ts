@@ -369,6 +369,16 @@ export class PgStore implements Store {
     return { listing: row.listing, rent: row.rent, capturedAt: row.captured_at };
   }
 
+  /** True when ANY user has a verdict on this listing — gates whether a
+   *  snapshot backfill is worth an AVM call (someone's property page needs it). */
+  async hasVerdictsForListing(listingId: string): Promise<boolean> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT 1 FROM verdicts WHERE listing_id = ${listingId} LIMIT 1
+    `) as unknown[];
+    return rows.length > 0;
+  }
+
   /** Newest verdict for this (user, listing) pair — the authorization gate for
    *  property features: you only model properties from your own feed. */
   async loadVerdictForListing(

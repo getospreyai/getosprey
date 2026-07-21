@@ -99,7 +99,21 @@ export async function GET(req: NextRequest) {
     // pass/fail class is unchanged.
     const onSeenListing = async (listing: RentCastListing) => {
       const snapshot = await store.loadSnapshot(listing.id);
-      if (!snapshot || !snapshot.rent) return; // never snapshotted, or no rent to reuse
+      if (!snapshot || !snapshot.rent) {
+        // Pre-snapshot-era listing still on market (seen before the snapshot
+        // feature shipped, or captured rentless). Backfill so its property
+        // pages heal — but only spend the AVM call when someone actually has
+        // a verdict on it. No price diff this run: there's no prior price.
+        if (await store.hasVerdictsForListing(listing.id)) {
+          try {
+            const rent = await fetchRentFor(rentcast, listing);
+            await store.saveSnapshot(listing.id, listing, rent ?? snapshot?.rent ?? null);
+          } catch (err) {
+            console.error(`snapshot backfill failed (${listing.id}):`, err);
+          }
+        }
+        return;
+      }
       const storedRent = snapshot.rent;
 
       const result = await store.saveSnapshot(listing.id, listing, storedRent);
