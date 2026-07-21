@@ -82,6 +82,19 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
     profile.financingProfiles ?? []
   );
   const [presetKey, setPresetKey] = useState<PresetKey>("conventional");
+
+  const [tasteNotes, setTasteNotes] = useState<string[]>(profile.tasteNotes ?? []);
+  const [newNote, setNewNote] = useState("");
+  const [maxHoaMonthly, setMaxHoaMonthly] = useState(
+    profile.dealbreakers?.maxHoaMonthly != null ? String(profile.dealbreakers.maxHoaMonthly) : ""
+  );
+  const [excludeZipsText, setExcludeZipsText] = useState(
+    (profile.dealbreakers?.excludeZips ?? []).join(", ")
+  );
+  const [minYearBuilt, setMinYearBuilt] = useState(
+    profile.dealbreakers?.minYearBuilt != null ? String(profile.dealbreakers.minYearBuilt) : ""
+  );
+
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -106,6 +119,17 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
 
   function addFinancing() {
     setFinancingProfiles((prev) => [...prev, PRESETS[presetKey].make()]);
+  }
+
+  function addNote() {
+    const note = newNote.trim();
+    if (!note) return;
+    setTasteNotes((prev) => [...prev, note]);
+    setNewNote("");
+  }
+
+  function removeNote(index: number) {
+    setTasteNotes((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -138,6 +162,15 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
       minMonthlyCashFlow: minMonthlyCashFlow.trim() === "" ? 0 : Number(minMonthlyCashFlow),
       alertsPaused,
       financingProfiles,
+      dealbreakers: {
+        maxHoaMonthly: maxHoaMonthly.trim() === "" ? null : Number(maxHoaMonthly),
+        excludeZips: excludeZipsText
+          .split(",")
+          .map((z) => z.trim())
+          .filter(Boolean),
+        minYearBuilt: minYearBuilt.trim() === "" ? null : Number(minYearBuilt),
+      },
+      tasteNotes,
     };
 
     try {
@@ -377,6 +410,101 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
           >
             Add
           </button>
+        </div>
+      </div>
+
+      {/* Taste & dealbreakers */}
+      <div id="taste" className={cardClass}>
+        <h2 className={labelClass}>Taste & dealbreakers</h2>
+        <p className={helpClass}>
+          Dealbreakers reject a listing before it&apos;s underwritten — a match on paper that fails
+          one of these never reaches your feed. Taste notes are learned from your Telegram passes;
+          edit or clear them here.
+        </p>
+
+        <div className="mt-4 flex flex-col gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-white/50">Taste notes</label>
+            {tasteNotes.length > 0 && (
+              <ul className="mb-2 flex flex-col gap-2">
+                {tasteNotes.map((note, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/80"
+                  >
+                    <span>{note}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeNote(i)}
+                      className="flex-shrink-0 text-xs text-white/50 transition hover:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addNote();
+                  }
+                }}
+                placeholder="e.g. Skip busy-road listings"
+                className={fieldClass}
+              />
+              <button
+                type="button"
+                onClick={addNote}
+                className="whitespace-nowrap rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.1]"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-white/50">Max HOA ($/mo)</label>
+              <input
+                type="number"
+                min={0}
+                value={maxHoaMonthly}
+                onChange={(e) => setMaxHoaMonthly(e.target.value)}
+                placeholder="No limit"
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-white/50">Min year built</label>
+              <input
+                type="number"
+                min={1700}
+                max={2100}
+                value={minYearBuilt}
+                onChange={(e) => setMinYearBuilt(e.target.value)}
+                placeholder="No limit"
+                className={fieldClass}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-white/50">Excluded zips</label>
+            <input
+              type="text"
+              value={excludeZipsText}
+              onChange={(e) => setExcludeZipsText(e.target.value)}
+              placeholder="89101, 89104"
+              className={fieldClass}
+            />
+            <p className={helpClass}>Comma-separated. Listings in these zips are never underwritten.</p>
+          </div>
         </div>
       </div>
 

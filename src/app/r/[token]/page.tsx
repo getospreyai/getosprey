@@ -2,10 +2,15 @@ import Link from "next/link";
 import Backdrop from "@/components/Backdrop";
 import UnderwritingBreakdown from "@/components/UnderwritingBreakdown";
 import RentConfidence from "@/components/RentConfidence";
+import RentComps from "@/components/RentComps";
+import Section8Card from "@/components/Section8Card";
+import PriceHistory from "@/components/PriceHistory";
+import MaxOfferCard from "@/components/MaxOfferCard";
 import ProjectionTable from "@/components/ProjectionTable";
 import { ensureSchema, hasDb } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import { bestUnderwriting } from "@/lib/best-underwriting";
+import { computePropertyInsights } from "@/lib/property-insights";
 import { PROPERTY_TYPE_LABELS } from "@/lib/property-labels";
 import { formatMoney, formatSignedMonthly } from "@/lib/format";
 import { project, toIncomeInput, toPropertyInput } from "@/osprey/engine";
@@ -52,17 +57,32 @@ export default async function PublicReportPage({
     );
   }
 
-  const [owner, verdict, snapshot, reportRow] = await Promise.all([
+  const [owner, verdict, snapshot, reportRow, events] = await Promise.all([
     store.loadProfile(shareLink.userId),
     store.loadVerdictForListing(shareLink.userId, shareLink.listingId),
     store.loadSnapshot(shareLink.listingId),
     store.getReport(shareLink.userId, shareLink.listingId),
+    store.loadEventsForListing(shareLink.listingId),
   ]);
 
   const property = snapshot ? toPropertyInput(snapshot.listing) : null;
   const income = snapshot?.rent ? toIncomeInput(snapshot.rent) : null;
   const underwriting = property && income && owner ? bestUnderwriting(property, income, owner) : null;
   const projection = underwriting ? project(underwriting, 30) : null;
+  // Max offer is included here too, unlike a seller-facing listing site — the
+  // audience is the owner's client-investor (a realtor forwarding their own
+  // analysis), not the seller on the other side of the negotiation.
+  const insights =
+    property && income && underwriting && owner
+      ? computePropertyInsights({
+          property,
+          income,
+          uw: underwriting,
+          bar: owner.minMonthlyCashFlow,
+          bedrooms: snapshot?.listing.bedrooms,
+          rawComparables: snapshot?.rent?.comparables,
+        })
+      : null;
 
   const address =
     snapshot?.listing.formattedAddress ?? snapshot?.listing.addressLine1 ?? verdict?.address ?? "Property";
@@ -104,9 +124,26 @@ export default async function PublicReportPage({
         </p>
       </div>
 
-      {income && underwriting && projection ? (
+      <PriceHistory events={events} />
+
+      {income && underwriting && projection && insights && owner ? (
         <>
-          <RentConfidence rent={income.rent} />
+          <MaxOfferCard
+            maxOffer={insights.maxOffer}
+            clearingRate={insights.clearingRate}
+            profileRate={underwriting.loan.rate}
+            bar={owner.minMonthlyCashFlow}
+            daysOnMarket={snapshot?.listing.daysOnMarket}
+          />
+          <RentConfidence rent={income.rent} stress={insights.stress} />
+          <RentComps comparables={insights.comparables} />
+          {insights.section8 && snapshot && snapshot.listing.bedrooms != null && (
+            <Section8Card
+              section8={insights.section8}
+              bedrooms={snapshot.listing.bedrooms}
+              avmRent={income.rent.monthlyRent}
+            />
+          )}
           <UnderwritingBreakdown uw={underwriting} />
           <ProjectionTable projection={projection} />
         </>

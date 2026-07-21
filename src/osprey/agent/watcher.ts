@@ -9,8 +9,18 @@ import { RentCastClient } from '../engine/index';
 export interface WatchTarget {
   city?: string;
   state: string;
-  /** Only listings at most this many days old (RentCast minimum is 1). */
-  daysOld: number;
+  /**
+   * Only listings at most this many days old (RentCast minimum is 1). Omit
+   * for a full paginated pull of the entire active set instead.
+   *
+   * `daysOld` on /listings/sale keys on `listedDate` — it's blind to price
+   * cuts on listings that aren't brand-new (a mid-listing price change
+   * doesn't reset listedDate). The daily cron wants the full active set so
+   * its `seen` split can route already-known ids into the price-diff hook;
+   * a one-off scan that only cares about brand-new listings (e.g. the
+   * onboarding wizard's first-run scan) can keep using `daysOld`.
+   */
+  daysOld?: number;
 }
 
 export interface ListingBatch {
@@ -19,15 +29,39 @@ export interface ListingBatch {
   rentEstimates: Map<string, RentCastRentEstimate>;
 }
 
+/** Page size for the full-pull branch — RentCast's max per call. */
+const PAGE_LIMIT = 500;
+
 export async function fetchBatch(
   client: RentCastClient,
   target: WatchTarget,
 ): Promise<ListingBatch> {
-  const listings = await client.fetchSaleListings({
-    city: target.city,
-    state: target.state,
-    daysOld: target.daysOld,
-  });
+  if (target.daysOld != null) {
+    const listings = await client.fetchSaleListings({
+      city: target.city,
+      state: target.state,
+      daysOld: target.daysOld,
+    });
+    return { listings, rentEstimates: new Map() };
+  }
+
+  // Full active-set pull: paginate until a page returns fewer than the page
+  // limit. ~12-20 calls/day for the Las Vegas metro (see
+  // wave2-research.md RECOMMENDATIONS §1) — billed per call, not per result,
+  // so this is the cheap way to diff ~all active listings daily.
+  const listings: RentCastListing[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await client.fetchSaleListings({
+      city: target.city,
+      state: target.state,
+      limit: PAGE_LIMIT,
+      offset,
+    });
+    listings.push(...page);
+    if (page.length < PAGE_LIMIT) break;
+    offset += PAGE_LIMIT;
+  }
   return { listings, rentEstimates: new Map() };
 }
 

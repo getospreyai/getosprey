@@ -1,8 +1,17 @@
-import type { RentBasis } from "@/osprey/engine";
-import { formatMoney } from "@/lib/format";
+import type { RentBasis, StressResult } from "@/osprey/engine";
+import { formatMoney, formatSignedMonthly } from "@/lib/format";
 
-/** Monthly rent + AVM range bar + source note. Pure display, server-safe. */
-export default function RentConfidence({ rent }: { rent: RentBasis }) {
+/** Monthly rent + AVM range bar + source note, optionally with a low-end
+ *  stress badge (stressAtRangeLow re-underwrites at rangeLow — "if rent
+ *  comes in at the pessimistic end, does this still work?"). Pure display,
+ *  server-safe. */
+export default function RentConfidence({
+  rent,
+  stress,
+}: {
+  rent: RentBasis;
+  stress?: StressResult | null;
+}) {
   const hasRange = rent.rangeLow != null && rent.rangeHigh != null && rent.rangeHigh > rent.rangeLow;
   const markerPct = hasRange
     ? Math.min(100, Math.max(0, ((rent.monthlyRent - rent.rangeLow!) / (rent.rangeHigh! - rent.rangeLow!)) * 100))
@@ -31,6 +40,19 @@ export default function RentConfidence({ rent }: { rent: RentBasis }) {
             <span>{formatMoney(rent.rangeLow!)}</span>
             <span>{formatMoney(rent.rangeHigh!)}</span>
           </div>
+        </div>
+      )}
+
+      {stress && rent.rangeLow != null && (
+        <div
+          className={
+            stress.holdsAtLowEnd
+              ? "mt-4 rounded-xl border border-emerald-400/30 bg-emerald-500/[0.08] px-3 py-2 text-sm text-emerald-300"
+              : "mt-4 rounded-xl border border-amber-400/30 bg-amber-500/[0.08] px-3 py-2 text-sm text-amber-300"
+          }
+        >
+          {stress.holdsAtLowEnd ? "Holds at the low end: " : "Below your bar at the low end: "}
+          {formatSignedMonthly(stress.lowEndCashFlow)} at {formatMoney(rent.rangeLow)}
         </div>
       )}
 

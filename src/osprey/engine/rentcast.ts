@@ -29,6 +29,26 @@ export interface RentCastListing {
   daysOnMarket?: number;
   hoa?: { fee?: number };
   unitCount?: number;
+  /**
+   * The listing/price-event log, keyed by date ("YYYY-MM-DD"). A price
+   * change appends a new dated entry, so diffing the two most recent
+   * entries reads old price, new price, and the change date directly off
+   * one listing fetch — no prior-day snapshot strictly required (though we
+   * keep one anyway as belt-and-suspenders; see pg-store.ts saveSnapshot).
+   * Note: `city="Las Vegas"` alone misses Henderson/North Las Vegas —
+   * metro-wide coverage is a lat/long+radius query, left for later.
+   */
+  history?: Record<
+    string,
+    {
+      event?: string;
+      price?: number;
+      listingType?: string;
+      listedDate?: string;
+      removedDate?: string;
+      daysOnMarket?: number;
+    }
+  >;
 }
 
 export interface RentCastRentEstimate {
@@ -84,6 +104,26 @@ export function toIncomeInput(estimate: RentCastRentEstimate): IncomeInput | nul
       note: `RentCast AVM${comps ? `, ${comps} comps` : ''}`,
     },
   };
+}
+
+/**
+ * Whether a listing's `history` shows more than one price decrease — i.e.
+ * the cut just detected isn't the first. Walks the dated entries in order
+ * and counts drops; "repeat" means at least 2 recorded. Missing/short
+ * history reads as false (nothing to compare).
+ */
+export function isRepeatPriceCut(listing: RentCastListing): boolean {
+  if (!listing.history) return false;
+  const points = Object.entries(listing.history)
+    .map(([date, entry]) => ({ date, price: entry.price }))
+    .filter((p): p is { date: string; price: number } => typeof p.price === 'number')
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  let drops = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].price < points[i - 1].price) drops++;
+  }
+  return drops > 1;
 }
 
 // --- Fetch helpers -------------------------------------------------------------

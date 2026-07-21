@@ -107,5 +107,42 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
 
+  // Price-change timeline, written by the (dormant, RENTCAST_ENABLED-gated)
+  // price-cut re-underwrite path. `kind` is 'price_change' today; leaves
+  // room for other listing_snapshots-derived events later.
+  await sql`
+    CREATE TABLE IF NOT EXISTS listing_events (
+      id          BIGSERIAL PRIMARY KEY,
+      listing_id  TEXT NOT NULL,
+      kind        TEXT NOT NULL,
+      old_price   NUMERIC,
+      new_price   NUMERIC,
+      created_at  TIMESTAMPTZ DEFAULT now()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS listing_events_listing_idx
+      ON listing_events (listing_id)
+  `;
+
+  // One row per daily cron scan — the Sunday digest's "last 7 days" input.
+  // Written only on the RENTCAST_ENABLED path; the disabled path writes
+  // nothing here, same as everywhere else RentCast-gated.
+  await sql`
+    CREATE TABLE IF NOT EXISTS scan_runs (
+      id            BIGSERIAL PRIMARY KEY,
+      ran_at        TIMESTAMPTZ DEFAULT now(),
+      city          TEXT,
+      state         TEXT,
+      scanned       INT NOT NULL DEFAULT 0,
+      in_niche      INT NOT NULL DEFAULT 0,
+      matched       INT NOT NULL DEFAULT 0,
+      underwritten  INT NOT NULL DEFAULT 0,
+      texts         INT NOT NULL DEFAULT 0,
+      price_changes INT NOT NULL DEFAULT 0
+    )
+  `;
+
   schemaReady = true;
 }

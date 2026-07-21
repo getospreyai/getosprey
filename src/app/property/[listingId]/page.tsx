@@ -5,6 +5,10 @@ import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import UnderwritingBreakdown from "@/components/UnderwritingBreakdown";
 import RentConfidence from "@/components/RentConfidence";
+import RentComps from "@/components/RentComps";
+import Section8Card from "@/components/Section8Card";
+import PriceHistory from "@/components/PriceHistory";
+import MaxOfferCard from "@/components/MaxOfferCard";
 import ProjectionTable from "@/components/ProjectionTable";
 import ScenarioStudio from "@/components/ScenarioStudio";
 import ReportPanel from "@/components/ReportPanel";
@@ -12,6 +16,7 @@ import ShareCard from "@/components/ShareCard";
 import { hasDb } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import { bestUnderwriting } from "@/lib/best-underwriting";
+import { computePropertyInsights } from "@/lib/property-insights";
 import { PROPERTY_TYPE_LABELS } from "@/lib/property-labels";
 import { formatMoney, formatSignedMonthly } from "@/lib/format";
 import { listingIdFromParam } from "@/lib/listing-param";
@@ -91,10 +96,11 @@ export default async function PropertyPage({
     );
   }
 
-  const [snapshot, reportRow, shareLinks] = await Promise.all([
+  const [snapshot, reportRow, shareLinks, events] = await Promise.all([
     store.loadSnapshot(listingId),
     store.getReport(userId, listingId),
     store.listShareLinks(userId),
+    store.loadEventsForListing(listingId),
   ]);
 
   const existingShare = shareLinks.find((s) => s.listingId === listingId && !s.revoked);
@@ -104,6 +110,17 @@ export default async function PropertyPage({
   const income = snapshot?.rent ? toIncomeInput(snapshot.rent) : null;
   const underwriting = property && income ? bestUnderwriting(property, income, profile) : null;
   const projection = underwriting ? project(underwriting, 30) : null;
+  const insights =
+    property && income && underwriting
+      ? computePropertyInsights({
+          property,
+          income,
+          uw: underwriting,
+          bar: profile.minMonthlyCashFlow,
+          bedrooms: snapshot?.listing.bedrooms,
+          rawComparables: snapshot?.rent?.comparables,
+        })
+      : null;
 
   const address = snapshot?.listing.formattedAddress ?? snapshot?.listing.addressLine1 ?? verdict.address;
   const price = snapshot?.listing.price ?? verdict.price;
@@ -157,6 +174,8 @@ export default async function PropertyPage({
         </div>
       </div>
 
+      <PriceHistory events={events} />
+
       {!snapshot || !property ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md">
           <p className="text-sm text-white/60">
@@ -176,9 +195,24 @@ export default async function PropertyPage({
         </div>
       ) : (
         <>
-          {income && underwriting && projection ? (
+          {income && underwriting && projection && insights ? (
             <>
-              <RentConfidence rent={income.rent} />
+              <MaxOfferCard
+                maxOffer={insights.maxOffer}
+                clearingRate={insights.clearingRate}
+                profileRate={underwriting.loan.rate}
+                bar={profile.minMonthlyCashFlow}
+                daysOnMarket={snapshot.listing.daysOnMarket}
+              />
+              <RentConfidence rent={income.rent} stress={insights.stress} />
+              <RentComps comparables={insights.comparables} />
+              {insights.section8 && snapshot.listing.bedrooms != null && (
+                <Section8Card
+                  section8={insights.section8}
+                  bedrooms={snapshot.listing.bedrooms}
+                  avmRent={income.rent.monthlyRent}
+                />
+              )}
               <UnderwritingBreakdown uw={underwriting} />
               <ProjectionTable projection={projection} />
             </>
@@ -208,6 +242,21 @@ export default async function PropertyPage({
             initialReport={parsedReport}
             initialModel={reportRow?.model ?? null}
           />
+
+          {income && underwriting && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md">
+              <h2 className="text-sm font-medium text-white">Lender packet</h2>
+              <p className="mt-1 text-xs text-white/50">
+                Full statement, metrics, projection, comps and max-offer analysis as one branded PDF.
+              </p>
+              <a
+                href={`/api/property/${listingId}/packet`}
+                className="mt-4 inline-block rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:bg-indigo-400"
+              >
+                Download lender packet (PDF)
+              </a>
+            </div>
+          )}
         </>
       )}
 

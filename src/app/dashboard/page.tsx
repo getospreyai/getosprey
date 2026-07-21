@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import Backdrop from "@/components/Backdrop";
@@ -116,7 +117,15 @@ export default async function DashboardPage() {
 
             {profile.tasteNotes && profile.tasteNotes.length > 0 && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md">
-                <h2 className="text-sm font-medium text-white">What Osprey has learned</h2>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-medium text-white">What Osprey has learned</h2>
+                  <Link
+                    href="/settings#taste"
+                    className="text-xs text-violet-300 transition hover:text-violet-200"
+                  >
+                    Edit taste & dealbreakers →
+                  </Link>
+                </div>
                 <ul className="mt-3 space-y-2 text-sm text-white/60">
                   {profile.tasteNotes.map((note, i) => (
                     <li key={i} className="flex gap-2.5">

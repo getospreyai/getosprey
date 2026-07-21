@@ -1,8 +1,10 @@
 // Settings save/read endpoint. Only the fields the settings UI exposes are
-// accepted; id/name/telegramChatId/tasteNotes always come from the stored
-// profile — the client can never touch them (zod strips unknown keys, and
-// the merge below only reads the specific fields it allows). Schema + merge
-// logic live in src/lib/profile-schema.ts, shared with the onboarding wizard.
+// accepted; id/name/telegramChatId always come from the stored profile — the
+// client can never touch them (zod strips unknown keys, and the merge below
+// only reads the specific fields it allows). dealbreakers/tasteNotes are
+// user-editable but optional in the payload (see profile-schema.ts). Schema +
+// merge logic live in src/lib/profile-schema.ts, shared with the onboarding
+// wizard.
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";

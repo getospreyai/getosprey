@@ -18,6 +18,15 @@ export interface BuyBox {
   maxDaysOnMarket?: number;
 }
 
+export interface Dealbreakers {
+  /** Reject listings whose HOA fee exceeds this monthly dollar amount. */
+  maxHoaMonthly?: number;
+  /** Reject listings in these zip codes. */
+  excludeZips?: string[];
+  /** Reject listings built before this year. */
+  minYearBuilt?: number;
+}
+
 export interface InvestorProfile {
   id: string;
   name: string;
@@ -32,6 +41,9 @@ export interface InvestorProfile {
   assumptions?: Partial<Assumptions>;
   /** The alert gate: minimum monthly cash flow (at any financing profile) to notify. */
   minMonthlyCashFlow: number;
+  /** Hard filters enforced alongside the buy box — a match on paper that
+   *  fails any of these never reaches underwriting. */
+  dealbreakers?: Dealbreakers;
   /** Learned taste: pass reasons and preferences accumulated from the thread. */
   tasteNotes?: string[];
   /** When true, the loop logs verdicts to the ledger but never texts. */
@@ -41,4 +53,8 @@ export interface InvestorProfile {
   onboarded?: boolean;
   /** ISO timestamp of the onboarding wizard's first scan, set once. */
   initialScanAt?: string;
+  /** ISO timestamp of the last Sunday digest sent to this investor. Written
+   *  via saveProfileSettings (never touches telegramChatId) by the cron
+   *  route's digest step. Undefined = never sent. */
+  lastDigestAt?: string;
 }

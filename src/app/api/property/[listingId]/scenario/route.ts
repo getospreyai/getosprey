@@ -25,6 +25,11 @@ const ScenarioSchema = z.object({
   assumptions: AssumptionsSchema.optional(),
   rentOverride: z.number().min(0).max(1_000_000).optional(),
   projectionYears: z.number().int().min(1).max(40).optional(),
+  /** Added to cash-to-close and folded into cash-on-cash below — a rehab
+   *  budget isn't part of the engine's UnderwriteInput (it's a scenario
+   *  overlay, not a property/financing fact), so it's applied here rather
+   *  than threaded through underwrite(). */
+  rehabBudget: z.number().min(0).max(1_000_000).optional(),
 });
 
 export async function POST(
@@ -74,7 +79,7 @@ export async function POST(
     return NextResponse.json({ error: "not_underwritable" }, { status: 422, ...NO_STORE });
   }
 
-  const { financing, assumptions, rentOverride, projectionYears } = parsed.data;
+  const { financing, assumptions, rentOverride, projectionYears, rehabBudget } = parsed.data;
 
   // rentOverride replaces monthly rent with a user-entered ('manual') figure;
   // otherwise use the snapshotted AVM estimate.
@@ -100,5 +105,23 @@ export async function POST(
   });
   const projection = project(underwriting, projectionYears ?? 30);
 
-  return NextResponse.json({ underwriting, projection }, NO_STORE);
+  // Rehab overlay: same cash-on-cash formula underwrite() uses internally
+  // (annualCashFlow / cashToClose), just against a cash-to-close that
+  // includes the rehab budget. Equals the base figures when rehabBudget is
+  // 0/omitted, so callers can always read the "adjusted*" fields.
+  const effectiveRehabBudget = rehabBudget ?? 0;
+  const adjustedCashToClose = underwriting.cashToClose + effectiveRehabBudget;
+  const adjustedCashOnCashPct =
+    adjustedCashToClose > 0 ? (underwriting.annualCashFlow / adjustedCashToClose) * 100 : 0;
+
+  return NextResponse.json(
+    {
+      underwriting,
+      projection,
+      rehabBudget: effectiveRehabBudget,
+      adjustedCashToClose,
+      adjustedCashOnCashPct,
+    },
+    NO_STORE,
+  );
 }

@@ -3,7 +3,14 @@
 // when a bot token is configured (SMS can slot in post-MVP the same way).
 
 import type { RentCastListing, RentCastRentEstimate, Underwriting } from '../engine/index';
-import { buildVerdict, toIncomeInput, toPropertyInput, underwrite } from '../engine/index';
+import {
+  buildVerdict,
+  solveClearingRate,
+  solveMaxOffer,
+  toIncomeInput,
+  toPropertyInput,
+  underwrite,
+} from '../engine/index';
 import type { InvestorProfile } from './model';
 import { matchesBuyBox } from './matcher';
 import type { ListingBatch } from './watcher';
@@ -21,6 +28,10 @@ export interface VerdictRecord {
   sms: string;
   /** Full "reply A" breakdown — grounds the Messenger's answers about this deal. */
   analysis: string;
+  /** Cap rate at delivery time. Optional — absent on rows recorded before this field existed. */
+  capRatePct?: number;
+  /** Max-offer solve at delivery time. Optional — absent on rows recorded before this field existed. */
+  maxOffer?: { maxPrice: number; pctVsAsk: number; clearsAtAsk: boolean };
 }
 
 export interface ScanDeps {
@@ -30,8 +41,14 @@ export interface ScanDeps {
    *  invocations complete before the function exits. */
   deliver: (record: VerdictRecord) => void | Promise<void>;
   /** Persist the raw RentCast payloads so later features can re-run the engine.
-   *  Called (best-effort) after a matched listing gets a usable rent estimate. */
-  persistSnapshot?: (listing: RentCastListing, rent: RentCastRentEstimate) => Promise<void>;
+   *  Called (best-effort) after a matched listing gets a usable rent estimate.
+   *  Return type is deliberately loose (PgStore.saveSnapshot now returns a
+   *  price-change diff) — this call site never consults the result. */
+  persistSnapshot?: (listing: RentCastListing, rent: RentCastRentEstimate) => Promise<unknown>;
+  /** Called (best-effort) for listings already in `seen`, instead of full
+   *  new-listing processing — the seam price-cut re-underwriting hangs off.
+   *  Optional so fixture-driven scans that don't care about it can omit it. */
+  onSeenListing?: (listing: RentCastListing) => Promise<void>;
   log?: (line: string) => void;
 }
 
@@ -53,7 +70,16 @@ export async function runScan(
   const summary: ScanSummary = { scanned: 0, inNiche: 0, matched: 0, underwritten: 0, texts: 0 };
 
   for (const listing of batch.listings) {
-    if (seen.has(listing.id)) continue;
+    if (seen.has(listing.id)) {
+      if (deps.onSeenListing) {
+        try {
+          await deps.onSeenListing(listing);
+        } catch (err) {
+          log(`  onSeenListing failed for ${listing.id}: ${String(err)}`);
+        }
+      }
+      continue;
+    }
     seen.add(listing.id);
     summary.scanned++;
 
@@ -61,7 +87,7 @@ export async function runScan(
     if (!property) continue; // out of niche (5+ units, condos, land, no price)
     summary.inNiche++;
 
-    const interested = profiles.filter((p) => matchesBuyBox(listing, p.buyBox));
+    const interested = profiles.filter((p) => matchesBuyBox(listing, p.buyBox, p.dealbreakers));
     if (interested.length === 0) continue;
     summary.matched++;
 
@@ -92,10 +118,25 @@ export async function runScan(
       }
       if (!best) continue;
 
+      // Solve against the winning financing profile — same inputs that
+      // produced `best`, just re-run with price/rate as the free variable.
+      const solverInput = {
+        property,
+        income,
+        financing: best.financing,
+        assumptions: investor.assumptions,
+        targetMonthlyCashFlow: investor.minMonthlyCashFlow,
+      };
+      const maxOffer = solveMaxOffer(solverInput);
+      const clearingRate = solveClearingRate(solverInput);
+
       const verdict = buildVerdict(best, {
         minMonthlyCashFlow: investor.minMonthlyCashFlow,
         listedMinutesAgo:
           listing.daysOnMarket != null ? listing.daysOnMarket * 24 * 60 : undefined,
+        daysOnMarket: listing.daysOnMarket,
+        maxOffer,
+        clearingRate,
       });
       if (verdict.meetsThreshold) summary.texts++;
 
@@ -111,6 +152,10 @@ export async function runScan(
         wouldText: verdict.meetsThreshold && investor.alertsPaused !== true,
         sms: verdict.sms,
         analysis: verdict.analysis,
+        capRatePct: best.metrics.capRatePct,
+        maxOffer: maxOffer
+          ? { maxPrice: maxOffer.maxPrice, pctVsAsk: maxOffer.pctVsAsk, clearsAtAsk: maxOffer.clearsAtAsk }
+          : undefined,
       });
     }
   }

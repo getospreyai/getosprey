@@ -91,3 +91,38 @@ CREATE TABLE IF NOT EXISTS share_links (
   revoked     BOOLEAN NOT NULL DEFAULT false,
   created_at  TIMESTAMPTZ DEFAULT now()
 );
+
+-- ---------------------------------------------------------------------------
+-- Wave 2 (2026-07-20): price-cut re-underwriting (dormant, RENTCAST_ENABLED-
+-- gated) + scan stats. Mirrors src/lib/db.ts ensureSchema().
+-- ---------------------------------------------------------------------------
+
+-- Price-change timeline, written by the price-cut re-underwrite path.
+-- `kind` is 'price_change' today; leaves room for other listing_snapshots-
+-- derived events later.
+CREATE TABLE IF NOT EXISTS listing_events (
+  id          BIGSERIAL PRIMARY KEY,
+  listing_id  TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  old_price   NUMERIC,
+  new_price   NUMERIC,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS listing_events_listing_idx
+  ON listing_events (listing_id);
+
+-- One row per daily cron scan — the Sunday digest's "last 7 days" input.
+-- Written only on the RENTCAST_ENABLED path.
+CREATE TABLE IF NOT EXISTS scan_runs (
+  id            BIGSERIAL PRIMARY KEY,
+  ran_at        TIMESTAMPTZ DEFAULT now(),
+  city          TEXT,
+  state         TEXT,
+  scanned       INT NOT NULL DEFAULT 0,
+  in_niche      INT NOT NULL DEFAULT 0,
+  matched       INT NOT NULL DEFAULT 0,
+  underwritten  INT NOT NULL DEFAULT 0,
+  texts         INT NOT NULL DEFAULT 0,
+  price_changes INT NOT NULL DEFAULT 0
+);

@@ -1,10 +1,12 @@
 // Shared profile-settings validation + merge logic. Used by the settings
 // PATCH route (src/app/api/profile/route.ts) and the onboarding wizard's
 // completion route (src/app/api/onboarding/complete/route.ts) so both accept
-// exactly the same shape and merge the same way. id/name/telegramChatId/
-// tasteNotes always come from the stored profile — the client can never
-// touch them (zod strips unknown keys, and the merge below only reads the
-// specific fields it allows).
+// exactly the same shape and merge the same way. id/name/telegramChatId
+// always come from the stored profile — the client can never touch them
+// (zod strips unknown keys, and the merge below only reads the specific
+// fields it allows). dealbreakers/tasteNotes are user-editable but OPTIONAL
+// in the payload: omitting either key leaves the stored value untouched, so
+// older clients that don't send them can't wipe them out.
 
 import { z } from "zod";
 import type { InvestorProfile } from "@/osprey/agent/model";
@@ -81,6 +83,14 @@ export const AssumptionsSchema = z
   })
   .partial();
 
+/** Mirrors the engine's Dealbreakers type. Whole-object replace when present
+ *  (like buyBox) — null sub-fields mean "not set," not "leave unchanged." */
+export const DealbreakersSchema = z.object({
+  maxHoaMonthly: z.number().min(0).max(100_000).nullable(),
+  excludeZips: z.array(z.string().min(1).max(10)).max(200),
+  minYearBuilt: z.number().min(1700).max(2100).nullable(),
+});
+
 export const PatchProfileSchema = z.object({
   buyBox: z.object({
     cities: z.array(z.string().min(1).max(80)).max(50),
@@ -92,12 +102,18 @@ export const PatchProfileSchema = z.object({
   minMonthlyCashFlow: z.number().min(-100_000).max(100_000),
   alertsPaused: z.boolean(),
   financingProfiles: z.array(FinancingProfileSchema).min(1),
+  /** Optional so older/partial clients that don't send it leave dealbreakers untouched. */
+  dealbreakers: DealbreakersSchema.optional(),
+  /** Optional for the same reason; editable now (settings UI lands in P2). */
+  tasteNotes: z.array(z.string().min(1).max(280)).max(50).optional(),
 });
 
 export type PatchProfileData = z.infer<typeof PatchProfileSchema>;
 
 /** Merge validated settings-form data onto a stored profile. Never touches
- *  id/name/telegramChatId/tasteNotes/onboarded/initialScanAt. */
+ *  id/name/telegramChatId/onboarded/initialScanAt. dealbreakers/tasteNotes
+ *  only change when the payload includes them — omitted means "unchanged,"
+ *  not "clear." */
 export function mergeProfileSettings(
   stored: InvestorProfile,
   data: PatchProfileData,
@@ -115,5 +131,13 @@ export function mergeProfileSettings(
     minMonthlyCashFlow: data.minMonthlyCashFlow,
     alertsPaused: data.alertsPaused,
     financingProfiles: data.financingProfiles,
+    dealbreakers: data.dealbreakers
+      ? {
+          maxHoaMonthly: data.dealbreakers.maxHoaMonthly ?? undefined,
+          excludeZips: data.dealbreakers.excludeZips,
+          minYearBuilt: data.dealbreakers.minYearBuilt ?? undefined,
+        }
+      : stored.dealbreakers,
+    tasteNotes: data.tasteNotes ?? stored.tasteNotes,
   };
 }

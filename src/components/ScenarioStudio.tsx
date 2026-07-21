@@ -20,6 +20,12 @@ const KIND_LABELS: Record<Kind, string> = {
 
 interface ScenarioResult {
   underwriting: Underwriting;
+  /** Rehab overlay (stretch goal): added to cash-to-close, folded into CoC.
+   *  adjustedCashToClose/adjustedCashOnCashPct equal the base underwriting
+   *  figures when rehabBudget is 0 — always safe to display. */
+  rehabBudget: number;
+  adjustedCashToClose: number;
+  adjustedCashOnCashPct: number;
 }
 
 interface Pinned {
@@ -66,6 +72,7 @@ export default function ScenarioStudio({
     String((initialFinancing as { termYears?: number }).termYears ?? 30),
   );
   const [rentOverride, setRentOverride] = useState("");
+  const [rehabBudget, setRehabBudget] = useState("");
   const [vacancyPct, setVacancyPct] = useState(Math.round(initialAssumptions.vacancyPct * 100));
   const [maintenancePct, setMaintenancePct] = useState(
     Math.round(initialAssumptions.maintenancePct * 100),
@@ -110,6 +117,7 @@ export default function ScenarioStudio({
             managementPct: managementPct / 100,
           },
           rentOverride: rentOverride.trim() === "" ? undefined : Number(rentOverride),
+          rehabBudget: rehabBudget.trim() === "" ? undefined : Number(rehabBudget),
           projectionYears: 30,
         }),
       });
@@ -129,7 +137,9 @@ export default function ScenarioStudio({
 
   function pin() {
     if (!result || pinned.length >= 3) return;
-    const label = `${KIND_LABELS[kind]} ${rate}%${kind !== "cash" ? ` / ${downPct}% down` : ""}`;
+    const label =
+      `${KIND_LABELS[kind]} ${rate}%${kind !== "cash" ? ` / ${downPct}% down` : ""}` +
+      (result.rehabBudget > 0 ? ` +${formatMoney(result.rehabBudget)} rehab` : "");
     setPinned((prev) => [...prev, { id: ++pinIdSeq, label, result }]);
   }
 
@@ -213,6 +223,17 @@ export default function ScenarioStudio({
             className={fieldClass}
           />
         </div>
+        <div>
+          <label className="mb-1 block text-xs text-white/50">Rehab budget</label>
+          <input
+            type="number"
+            min={0}
+            value={rehabBudget}
+            onChange={(e) => setRehabBudget(e.target.value)}
+            placeholder="0"
+            className={fieldClass}
+          />
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -254,11 +275,17 @@ export default function ScenarioStudio({
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
               <Stat label="Cash flow" value={formatSignedMonthly(result.underwriting.monthlyCashFlow)} />
               <Stat label="Cap rate" value={formatPct(result.underwriting.metrics.capRatePct)} />
-              <Stat label="CoC" value={formatPct(result.underwriting.metrics.cashOnCashPct)} />
+              <Stat
+                label={result.rehabBudget > 0 ? "CoC (incl. rehab)" : "CoC"}
+                value={formatPct(result.adjustedCashOnCashPct)}
+              />
               {result.underwriting.metrics.lenderDscr != null && (
                 <Stat label="DSCR" value={result.underwriting.metrics.lenderDscr.toFixed(2)} />
               )}
-              <Stat label="Cash to close" value={formatMoney(result.underwriting.cashToClose)} />
+              <Stat
+                label={result.rehabBudget > 0 ? "Cash to close (incl. rehab)" : "Cash to close"}
+                value={formatMoney(result.adjustedCashToClose)}
+              />
             </div>
             <button
               type="button"
@@ -269,6 +296,11 @@ export default function ScenarioStudio({
               Pin scenario
             </button>
           </div>
+          {result.rehabBudget > 0 && (
+            <p className="mt-2 text-xs text-white/50">
+              Includes a {formatMoney(result.rehabBudget)} rehab budget added to cash to close.
+            </p>
+          )}
         </div>
       )}
 
@@ -292,7 +324,7 @@ export default function ScenarioStudio({
                     {formatSignedMonthly(p.result.underwriting.monthlyCashFlow)}
                   </td>
                   <td className="py-2 pr-4">{formatPct(p.result.underwriting.metrics.capRatePct)}</td>
-                  <td className="py-2 pr-4">{formatPct(p.result.underwriting.metrics.cashOnCashPct)}</td>
+                  <td className="py-2 pr-4">{formatPct(p.result.adjustedCashOnCashPct)}</td>
                   <td className="py-2">
                     <button
                       type="button"

@@ -1,9 +1,13 @@
 import type { RentCastListing } from '../engine/index';
 import { mapPropertyType } from '../engine/index';
-import type { BuyBox } from './model';
+import type { BuyBox, Dealbreakers } from './model';
 
-/** Does a listing fall inside an investor's buy box? */
-export function matchesBuyBox(listing: RentCastListing, box: BuyBox): boolean {
+/** Does a listing fall inside an investor's buy box, and clear their dealbreakers? */
+export function matchesBuyBox(
+  listing: RentCastListing,
+  box: BuyBox,
+  dealbreakers?: Dealbreakers,
+): boolean {
   const type = mapPropertyType(listing);
   if (!type || !box.propertyTypes.includes(type)) return false;
 
@@ -28,6 +32,24 @@ export function matchesBuyBox(listing: RentCastListing, box: BuyBox): boolean {
     box.maxDaysOnMarket != null &&
     listing.daysOnMarket != null &&
     listing.daysOnMarket > box.maxDaysOnMarket
+  ) {
+    return false;
+  }
+
+  // Dealbreakers: unlike the buy box, missing data fails OPEN (never reject
+  // on a field RentCast didn't return) — same convention as maxDaysOnMarket
+  // above.
+  if (dealbreakers?.maxHoaMonthly != null) {
+    const hoa = listing.hoa?.fee ?? 0;
+    if (hoa > dealbreakers.maxHoaMonthly) return false;
+  }
+  if (dealbreakers?.excludeZips?.length && listing.zipCode != null) {
+    if (dealbreakers.excludeZips.includes(listing.zipCode)) return false;
+  }
+  if (
+    dealbreakers?.minYearBuilt != null &&
+    listing.yearBuilt != null &&
+    listing.yearBuilt < dealbreakers.minYearBuilt
   ) {
     return false;
   }

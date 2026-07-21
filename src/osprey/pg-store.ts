@@ -47,6 +47,44 @@ export interface ShareLinkRow {
   createdAt: string;
 }
 
+/** Old vs new price captured by a diff-aware saveSnapshot() call. */
+export interface PriceChangeInfo {
+  oldPrice: number;
+  newPrice: number;
+}
+
+/** A listing_events row (property-page price-history timeline). */
+export interface ListingEventRow {
+  id: number;
+  listingId: string;
+  kind: string;
+  oldPrice: number | null;
+  newPrice: number | null;
+  createdAt: string;
+}
+
+/** One scan_runs row — a single daily cron invocation's tallies. */
+export interface ScanRunStats {
+  city: string;
+  state: string;
+  scanned: number;
+  inNiche: number;
+  matched: number;
+  underwritten: number;
+  texts: number;
+  priceChanges: number;
+}
+
+/** scan_runs rows summed over a window — the Sunday digest's market-wide input. */
+export interface ScanRunTotals {
+  scanned: number;
+  priceChanges: number;
+  /** Row count in the window. Zero means the scan was dormant all week
+   *  (RENTCAST_ENABLED off, or genuinely no cron ran) — the digest builder
+   *  treats that as "stay silent," not "report zeros." */
+  runCount: number;
+}
+
 interface ProfileRow {
   user_id: string;
   profile: Record<string, unknown>;
@@ -132,6 +170,26 @@ export class PgStore implements Store {
     return rows.map((r) => r.record);
   }
 
+  /**
+   * This investor's verdicts created since `since`, newest first. Distinct
+   * from loadRecentVerdicts (which caps by row COUNT): the Sunday digest
+   * needs an accurate 7-day window regardless of how many verdicts landed —
+   * a busy week could exceed any fixed limit, a quiet week could span more
+   * than N rows back. Bounded at 500 as a sanity cap, not a real limit for
+   * one investor's weekly volume.
+   */
+  async loadVerdictsSince(userId: string, since: Date): Promise<VerdictRecord[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT record
+      FROM verdicts
+      WHERE user_id = ${userId} AND created_at >= ${since.toISOString()}
+      ORDER BY created_at DESC
+      LIMIT 500
+    `) as { record: VerdictRecord }[];
+    return rows.map((r) => r.record);
+  }
+
   async appendVerdict(record: VerdictRecord): Promise<void> {
     const db = requireSql();
     await db`
@@ -194,13 +252,36 @@ export class PgStore implements Store {
 
   // --- Listing snapshots ---------------------------------------------------
 
-  /** Persist the raw RentCast payloads for a matched listing (upsert on re-scan). */
+  /**
+   * Persist the raw RentCast payloads for a matched listing (upsert on
+   * re-scan). Diff-aware: when a prior snapshot exists and its price
+   * differs from the incoming listing's price, records a `price_change`
+   * listing_events row and returns the old/new prices — the price-cut
+   * re-underwrite path (cron route) reacts to that return value. Returns
+   * null on a first-time snapshot or when the price didn't move.
+   */
   async saveSnapshot(
     listingId: string,
     listing: RentCastListing,
     rent: RentCastRentEstimate | null,
-  ): Promise<void> {
+  ): Promise<{ priceChange: PriceChangeInfo } | null> {
     const db = requireSql();
+
+    const existingRows = (await db`
+      SELECT listing FROM listing_snapshots WHERE listing_id = ${listingId}
+    `) as { listing: RentCastListing }[];
+    const oldPrice = existingRows[0]?.listing?.price;
+    const newPrice = listing.price;
+
+    let priceChange: PriceChangeInfo | null = null;
+    if (oldPrice != null && newPrice != null && oldPrice !== newPrice) {
+      priceChange = { oldPrice, newPrice };
+      await db`
+        INSERT INTO listing_events (listing_id, kind, old_price, new_price)
+        VALUES (${listingId}, 'price_change', ${oldPrice}, ${newPrice})
+      `;
+    }
+
     await db`
       INSERT INTO listing_snapshots (listing_id, listing, rent, captured_at)
       VALUES (${listingId}, ${JSON.stringify(listing)}::jsonb, ${
@@ -211,6 +292,69 @@ export class PgStore implements Store {
             rent = EXCLUDED.rent,
             captured_at = now()
     `;
+
+    return priceChange ? { priceChange } : null;
+  }
+
+  /** Price-change timeline for one listing, newest first (property-page use). */
+  async loadEventsForListing(listingId: string): Promise<ListingEventRow[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT id, listing_id, kind, old_price, new_price, created_at
+      FROM listing_events
+      WHERE listing_id = ${listingId}
+      ORDER BY created_at DESC
+    `) as {
+      id: number;
+      listing_id: string;
+      kind: string;
+      old_price: string | number | null;
+      new_price: string | number | null;
+      created_at: string;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      listingId: r.listing_id,
+      kind: r.kind,
+      // NUMERIC columns can come back as strings — coerce either way.
+      oldPrice: r.old_price == null ? null : Number(r.old_price),
+      newPrice: r.new_price == null ? null : Number(r.new_price),
+      createdAt: r.created_at,
+    }));
+  }
+
+  /** Record one daily cron scan's tallies (Sunday-digest input). */
+  async recordScanRun(stats: ScanRunStats): Promise<void> {
+    const db = requireSql();
+    await db`
+      INSERT INTO scan_runs (city, state, scanned, in_niche, matched, underwritten, texts, price_changes)
+      VALUES (${stats.city}, ${stats.state}, ${stats.scanned}, ${stats.inNiche}, ${stats.matched},
+              ${stats.underwritten}, ${stats.texts}, ${stats.priceChanges})
+    `;
+  }
+
+  /**
+   * scan_runs summed over a window — the Sunday digest's "84 listings
+   * scanned" / "3 price cuts tracked" figures. No existing method aggregates
+   * scan_runs at all (recordScanRun only writes); this is a genuinely new
+   * read, not a substitute for a limit-based one.
+   */
+  async loadScanRunTotalsSince(since: Date): Promise<ScanRunTotals> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT
+        COALESCE(SUM(scanned), 0)::int AS scanned,
+        COALESCE(SUM(price_changes), 0)::int AS price_changes,
+        COUNT(*)::int AS run_count
+      FROM scan_runs
+      WHERE ran_at >= ${since.toISOString()}
+    `) as { scanned: number; price_changes: number; run_count: number }[];
+    const row = rows[0];
+    return {
+      scanned: row?.scanned ?? 0,
+      priceChanges: row?.price_changes ?? 0,
+      runCount: row?.run_count ?? 0,
+    };
   }
 
   async loadSnapshot(listingId: string): Promise<ListingSnapshot | null> {
