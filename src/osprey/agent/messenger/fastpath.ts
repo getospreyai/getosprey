@@ -24,6 +24,9 @@ export function fastPath(message: string): Intent | null {
   if (upper === "A" || upper === "ANALYZE" || upper === "ANALYSIS") {
     return { kind: "full_analysis", deal: null };
   }
+  if (upper === "R" || upper === "REPORT") {
+    return { kind: "research_report", deal: null };
+  }
   if (upper === "S" || upper === "SAVE") {
     return { kind: "save", deal: null };
   }

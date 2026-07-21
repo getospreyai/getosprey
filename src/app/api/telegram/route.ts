@@ -6,8 +6,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { hasDb, ensureSchema } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import { TelegramClient, handleUpdate, type TgUpdate } from "@/osprey/agent/telegram";
-import { AnthropicIntentParser, llmAvailable } from "@/osprey/agent/messenger/llm";
+import { OpenRouterIntentParser, llmAvailable } from "@/osprey/agent/messenger/llm";
 import type { IntentParser } from "@/osprey/agent/messenger/intents";
+
+// Free OpenRouter endpoints are best-effort and can run slow (30s+ under
+// load); the parse + answer round trips need more than the platform default.
+export const maxDuration = 60;
+
+/**
+ * Telegram's R button/keyword teaser — the AI research-report feature is
+ * paused for the MVP relaunch (see src/osprey/reports/generate.ts header);
+ * full generate+PDF+deliver flow is preserved in git history.
+ */
+async function deliverReport(client: TelegramClient, chatId: number): Promise<void> {
+  await client.sendMessage(
+    chatId,
+    "📄 Research reports are coming soon — I'll message you here the moment they're live.",
+  );
+}
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-telegram-bot-api-secret-token");
@@ -35,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     await ensureSchema();
     const store = new PgStore();
-    const parser: IntentParser | null = llmAvailable() ? new AnthropicIntentParser() : null;
+    const parser: IntentParser | null = llmAvailable() ? new OpenRouterIntentParser() : null;
     const client = new TelegramClient(token);
 
     await handleUpdate(update, {
@@ -45,6 +61,7 @@ export async function POST(req: NextRequest) {
         await client.sendMessage(chatId, text, opts);
       },
       answerCallback: (id) => client.answerCallbackQuery(id),
+      deliverReport: (chatId) => deliverReport(client, chatId),
       log: (line) => console.log(line),
     });
   } catch (err) {

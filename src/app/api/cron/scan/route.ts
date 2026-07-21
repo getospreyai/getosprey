@@ -19,6 +19,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Opt-in gate: unset disables scans with zero dashboard work; flipping
+  // this one Vercel var re-enables. A deliberately paused scan is not a
+  // failing cron, so it's a 200.
+  if (process.env.RENTCAST_ENABLED !== "true") {
+    return NextResponse.json({ ok: true, skipped: "rentcast_disabled" });
+  }
+
   if (!hasDb()) {
     console.error("Cron scan: DATABASE_URL is not configured.");
     return NextResponse.json({ error: "DATABASE_URL is not configured" }, { status: 503 });
@@ -63,6 +70,7 @@ export async function GET(req: NextRequest) {
 
     const summary = await runScan(batch, profiles, seen, {
       getRent: (listing) => fetchRentFor(rentcast, listing),
+      persistSnapshot: (listing, rent) => store.saveSnapshot(listing.id, listing, rent),
       deliver: async (record: VerdictRecord) => {
         await store.appendVerdict(record);
         if (!record.wouldText) return;

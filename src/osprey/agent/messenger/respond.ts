@@ -13,7 +13,7 @@ export interface RespondDeps {
   store: Store;
   /** LLM parser; null = fast-path only (no credentials available). */
   parser: IntentParser | null;
-  /** Grounded Q&A; defaults to the Anthropic-backed implementation. */
+  /** Grounded Q&A; defaults to the OpenRouter-backed implementation. */
   answer?: (question: string, analysis: string) => Promise<string>;
   log?: (line: string) => void;
 }
@@ -22,6 +22,9 @@ export interface RespondResult {
   reply: string | null;
   intent: Intent;
   via: "fastpath" | "llm" | "none";
+  /** Set when the user asked for a research report; the caller (Telegram
+   *  webhook) runs the report service and delivers a PDF out-of-band. */
+  reportRequest?: VerdictRecord;
 }
 
 export interface RespondOpts {
@@ -53,7 +56,7 @@ export async function respond(
     if (!deps.parser) {
       return {
         reply:
-          "I can handle A / P / S / HELP without my brain plugged in, but plain English needs ANTHROPIC_API_KEY set.",
+          "I can handle A / P / S / HELP without my brain plugged in, but plain English needs OPENROUTER_API_KEY set.",
         intent: { kind: "unknown", clarify: "" },
         via: "none",
       };
@@ -87,7 +90,7 @@ export async function respond(
     return { reply, intent, via };
   }
 
-  return { reply: result.reply, intent, via };
+  return { reply: result.reply, intent, via, reportRequest: result.reportRequest };
 }
 
 function summarizeBuyBox(profile: {

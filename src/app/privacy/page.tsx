@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export const metadata = {
   title: "Privacy Policy — Osprey",
 };
@@ -5,9 +7,9 @@ export const metadata = {
 export default function PrivacyPolicy() {
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 bg-black px-6 py-20 text-white">
-      <a href="/" className="text-sm text-white/50 underline hover:text-white/80">
+      <Link href="/" className="text-sm text-white/50 underline hover:text-white/80">
         &larr; Back to Osprey
-      </a>
+      </Link>
 
       <h1 className="mt-6 text-3xl font-semibold tracking-tight">
         Privacy Policy

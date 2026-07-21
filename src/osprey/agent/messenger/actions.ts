@@ -16,6 +16,9 @@ export interface ActionResult {
   updatedProfile?: InvestorProfile;
   /** Present when the intent is a question the caller should answer via LLM. */
   question?: { text: string; verdict: VerdictRecord };
+  /** Present when the user asked for a research report; the caller runs the
+   *  (rate-limited, cached) report service and delivers the PDF out-of-band. */
+  reportRequest?: VerdictRecord;
 }
 
 /** Resolve a deal reference to a verdict record (null ref = most recent). */
@@ -37,6 +40,14 @@ export function executeIntent(
       const deal = resolveDeal(intent.deal, recentVerdicts);
       if (!deal) return { reply: "No deals in your thread yet — I'll text you when one clears your bar." };
       return { reply: deal.analysis };
+    }
+
+    case "research_report": {
+      // Deterministic here: resolve the deal and hand it back. The caller
+      // (Telegram webhook) runs the report service and delivers the PDF.
+      const deal = resolveDeal(intent.deal, recentVerdicts);
+      if (!deal) return { reply: "No deals in your thread yet to report on — I'll text you when one clears your bar." };
+      return { reply: null, reportRequest: deal };
     }
 
     case "pass": {
@@ -151,7 +162,7 @@ export function executeIntent(
       return {
         reply:
           `I text you underwritten deals that clear your cash-flow bar (currently ${money(profile.minMonthlyCashFlow)}/mo).\n` +
-          `Reply A for the full breakdown, P to pass (add a reason and I learn), S to save.\n` +
+          `Reply A for the full breakdown, P to pass (add a reason and I learn), S to save, R for a client-ready research report (PDF).\n` +
           `Or just tell me things: "bump my max to 450k" · "only text me $300/mo+" · "what are the taxes on that one"`,
       };
     }

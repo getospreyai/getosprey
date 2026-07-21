@@ -59,6 +59,28 @@ export const FinancingProfileSchema = z.discriminatedUnion("kind", [
   CashSchema,
 ]);
 
+/** Partial overrides on the engine's Assumptions — mirrors the engine's
+ *  `Assumptions` type. Every field is optional so scenario callers can override
+ *  just the assumptions they care about; the engine fills the rest from
+ *  STANDARD_ASSUMPTIONS. Percentages are decimals (0.05 = 5%). */
+export const AssumptionsSchema = z
+  .object({
+    vacancyPct: z.number().min(0).max(1),
+    maintenancePct: z.number().min(0).max(1),
+    capexPct: z.number().min(0).max(1),
+    managementPct: z.number().min(0).max(1),
+    purchaseClosingPct: z.number().min(0).max(1),
+    sellingCostPct: z.number().min(0).max(1),
+    utilitiesMonthly: z.number().min(0).max(100_000),
+    otherMonthlyExpense: z.number().min(0).max(100_000),
+    taxRatePct: z.number().min(0).max(1),
+    insuranceRatePct: z.number().min(0).max(1),
+    annualAppreciationPct: z.number().min(-1).max(1),
+    annualIncomeGrowthPct: z.number().min(-1).max(1),
+    annualExpenseGrowthPct: z.number().min(-1).max(1),
+  })
+  .partial();
+
 export const PatchProfileSchema = z.object({
   buyBox: z.object({
     cities: z.array(z.string().min(1).max(80)).max(50),

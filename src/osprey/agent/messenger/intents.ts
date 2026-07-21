@@ -20,6 +20,10 @@ export const IntentSchema = z.discriminatedUnion("kind", [
     deal: dealRef,
   }),
   z.object({
+    kind: z.literal("research_report"),
+    deal: dealRef,
+  }),
+  z.object({
     kind: z.literal("pass"),
     deal: dealRef,
     reason: z

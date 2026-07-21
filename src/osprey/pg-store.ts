@@ -10,12 +10,41 @@ import { sql } from "@/lib/db";
 import type { Store } from "./agent/store";
 import type { InvestorProfile } from "./agent/model";
 import type { VerdictRecord } from "./agent/loop";
+import type { RentCastListing, RentCastRentEstimate } from "./engine";
 
 type Sql = NonNullable<typeof sql>;
 
 function requireSql(): Sql {
   if (!sql) throw new Error("PgStore: DATABASE_URL is not configured.");
   return sql;
+}
+
+/** A persisted RentCast payload pair captured at scan time. */
+export interface ListingSnapshot {
+  listing: RentCastListing;
+  /** Null when the AVM had no usable estimate at capture time. */
+  rent: RentCastRentEstimate | null;
+  capturedAt: string;
+}
+
+export type ReportStatus = "generating" | "ready" | "failed";
+
+/** A property_reports row. `report` is null until status becomes 'ready'. */
+export interface ReportRow<T = unknown> {
+  status: ReportStatus;
+  report: T | null;
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A share_links row. */
+export interface ShareLinkRow {
+  token: string;
+  userId: string;
+  listingId: string;
+  revoked: boolean;
+  createdAt: string;
 }
 
 interface ProfileRow {
@@ -161,5 +190,212 @@ export class PgStore implements Store {
       SELECT unnest(${ids}::text[])
       ON CONFLICT (listing_id) DO NOTHING
     `;
+  }
+
+  // --- Listing snapshots ---------------------------------------------------
+
+  /** Persist the raw RentCast payloads for a matched listing (upsert on re-scan). */
+  async saveSnapshot(
+    listingId: string,
+    listing: RentCastListing,
+    rent: RentCastRentEstimate | null,
+  ): Promise<void> {
+    const db = requireSql();
+    await db`
+      INSERT INTO listing_snapshots (listing_id, listing, rent, captured_at)
+      VALUES (${listingId}, ${JSON.stringify(listing)}::jsonb, ${
+        rent ? JSON.stringify(rent) : null
+      }::jsonb, now())
+      ON CONFLICT (listing_id) DO UPDATE
+        SET listing = EXCLUDED.listing,
+            rent = EXCLUDED.rent,
+            captured_at = now()
+    `;
+  }
+
+  async loadSnapshot(listingId: string): Promise<ListingSnapshot | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT listing, rent, captured_at
+      FROM listing_snapshots
+      WHERE listing_id = ${listingId}
+    `) as { listing: RentCastListing; rent: RentCastRentEstimate | null; captured_at: string }[];
+    const row = rows[0];
+    if (!row) return null;
+    return { listing: row.listing, rent: row.rent, capturedAt: row.captured_at };
+  }
+
+  /** Newest verdict for this (user, listing) pair — the authorization gate for
+   *  property features: you only model properties from your own feed. */
+  async loadVerdictForListing(
+    userId: string,
+    listingId: string,
+  ): Promise<VerdictRecord | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT record
+      FROM verdicts
+      WHERE user_id = ${userId} AND listing_id = ${listingId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `) as { record: VerdictRecord }[];
+    return rows[0]?.record ?? null;
+  }
+
+  // --- Property reports ----------------------------------------------------
+
+  async getReport<T = unknown>(
+    userId: string,
+    listingId: string,
+  ): Promise<ReportRow<T> | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT status, report, model, created_at, updated_at
+      FROM property_reports
+      WHERE user_id = ${userId} AND listing_id = ${listingId}
+    `) as {
+      status: ReportStatus;
+      report: T | null;
+      model: string | null;
+      created_at: string;
+      updated_at: string;
+    }[];
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      status: row.status,
+      report: row.report,
+      model: row.model,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  /** Mark a report as generating (claims the slot; clears any prior payload). */
+  async upsertReportGenerating(userId: string, listingId: string): Promise<void> {
+    const db = requireSql();
+    await db`
+      INSERT INTO property_reports (user_id, listing_id, status, report, model, updated_at)
+      VALUES (${userId}, ${listingId}, 'generating', NULL, NULL, now())
+      ON CONFLICT (user_id, listing_id) DO UPDATE
+        SET status = 'generating',
+            report = NULL,
+            model = NULL,
+            updated_at = now()
+    `;
+  }
+
+  async saveReportReady(
+    userId: string,
+    listingId: string,
+    report: unknown,
+    model: string,
+  ): Promise<void> {
+    const db = requireSql();
+    await db`
+      UPDATE property_reports
+      SET status = 'ready', report = ${JSON.stringify(report)}::jsonb,
+          model = ${model}, updated_at = now()
+      WHERE user_id = ${userId} AND listing_id = ${listingId}
+    `;
+  }
+
+  async markReportFailed(userId: string, listingId: string): Promise<void> {
+    const db = requireSql();
+    await db`
+      UPDATE property_reports
+      SET status = 'failed', updated_at = now()
+      WHERE user_id = ${userId} AND listing_id = ${listingId}
+    `;
+  }
+
+  /** Count report generations for a user since `since` — the rate-limit input. */
+  async countReportsSince(userId: string, since: Date): Promise<number> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT count(*)::int AS n
+      FROM property_reports
+      WHERE user_id = ${userId} AND updated_at >= ${since.toISOString()}
+    `) as { n: number }[];
+    return rows[0]?.n ?? 0;
+  }
+
+  // --- Share links ---------------------------------------------------------
+
+  /** Return the existing non-revoked token for this pair, or mint a new one. */
+  async createShareLink(userId: string, listingId: string): Promise<string> {
+    const db = requireSql();
+    const existing = (await db`
+      SELECT token
+      FROM share_links
+      WHERE user_id = ${userId} AND listing_id = ${listingId} AND revoked = false
+      ORDER BY created_at DESC
+      LIMIT 1
+    `) as { token: string }[];
+    if (existing[0]) return existing[0].token;
+
+    const token = crypto.randomUUID().replace(/-/g, "");
+    await db`
+      INSERT INTO share_links (token, user_id, listing_id)
+      VALUES (${token}, ${userId}, ${listingId})
+    `;
+    return token;
+  }
+
+  async loadShareLink(token: string): Promise<ShareLinkRow | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT token, user_id, listing_id, revoked, created_at
+      FROM share_links
+      WHERE token = ${token}
+    `) as {
+      token: string;
+      user_id: string;
+      listing_id: string;
+      revoked: boolean;
+      created_at: string;
+    }[];
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      token: row.token,
+      userId: row.user_id,
+      listingId: row.listing_id,
+      revoked: row.revoked,
+      createdAt: row.created_at,
+    };
+  }
+
+  /** Revoke every non-revoked token for this (user, listing) pair. */
+  async revokeShareLink(userId: string, listingId: string): Promise<void> {
+    const db = requireSql();
+    await db`
+      UPDATE share_links
+      SET revoked = true
+      WHERE user_id = ${userId} AND listing_id = ${listingId} AND revoked = false
+    `;
+  }
+
+  async listShareLinks(userId: string): Promise<ShareLinkRow[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT token, user_id, listing_id, revoked, created_at
+      FROM share_links
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+    `) as {
+      token: string;
+      user_id: string;
+      listing_id: string;
+      revoked: boolean;
+      created_at: string;
+    }[];
+    return rows.map((row) => ({
+      token: row.token,
+      userId: row.user_id,
+      listingId: row.listing_id,
+      revoked: row.revoked,
+      createdAt: row.created_at,
+    }));
   }
 }

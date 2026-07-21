@@ -11,6 +11,7 @@
 // another chat refuses to rebind.
 
 import type { Store } from './store';
+import type { VerdictRecord } from './loop';
 import { respond } from './messenger/respond';
 import type { IntentParser } from './messenger/intents';
 
@@ -26,6 +27,7 @@ const VERDICT_KEYBOARD = {
       { text: '👎 Pass', callback_data: 'P' },
       { text: '⭐ Save', callback_data: 'S' },
     ],
+    [{ text: '📄 Report', callback_data: 'R' }],
   ],
 };
 
@@ -84,6 +86,23 @@ export class TelegramClient {
   answerCallbackQuery(id: string): Promise<unknown> {
     return this.call('answerCallbackQuery', { callback_query_id: id });
   }
+
+  /** Send a file. Multipart, so the JSON `call()` can't carry it — fetch with
+   *  FormData + Blob instead. */
+  async sendDocument(
+    chatId: number,
+    filename: string,
+    bytes: Uint8Array,
+    caption?: string,
+  ): Promise<void> {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('document', new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }), filename);
+    if (caption) form.append('caption', caption);
+    const res = await fetch(`${API}/bot${this.token}/sendDocument`, { method: 'POST', body: form });
+    const body = (await res.json()) as { ok: boolean; description?: string };
+    if (!body.ok) throw new Error(`Telegram sendDocument failed: ${body.description ?? res.status}`);
+  }
 }
 
 export function chunkText(text: string, max: number): string[] {
@@ -107,6 +126,9 @@ export interface TelegramDeps {
   parser: IntentParser | null;
   send: (chatId: number, text: string, opts?: SendOptions) => Promise<void>;
   answerCallback?: (id: string) => Promise<unknown>;
+  /** Build and deliver a research-report PDF out-of-band (webhook only; the CLI
+   *  dev harness has no report service, so it leaves this unset). */
+  deliverReport?: (chatId: number, verdict: VerdictRecord) => Promise<void>;
   log?: (line: string) => void;
 }
 
@@ -154,6 +176,7 @@ export async function handleUpdate(update: TgUpdate, deps: TelegramDeps): Promis
     { dealHint },
   );
   if (result.reply !== null) await deps.send(chatId, result.reply);
+  if (result.reportRequest) await deps.deliverReport?.(chatId, result.reportRequest);
 }
 
 async function handleStart(
@@ -193,6 +216,6 @@ async function handleStart(
     chatId,
     `🪶 Linked, ${target.name}. Osprey will message verdicts here.\n\n` +
       'On any deal: A = full analysis · P = pass (add a reason and I learn your taste) · ' +
-      'S = save. Plain English works too — "bump my max to 450k". HELP anytime.',
+      'S = save · R = research report (PDF). Plain English works too — "bump my max to 450k". HELP anytime.',
   );
 }

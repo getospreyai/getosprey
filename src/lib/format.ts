@@ -35,3 +35,23 @@ export function formatSignedMonthly(n: number): string {
   const sign = rounded < 0 ? "−" : "+";
   return `${sign}$${Math.abs(rounded).toLocaleString("en-US")}/mo`;
 }
+
+/** "+$7,600" or "−$2,400" — signed, no "/mo" suffix, for annual figures. */
+export function formatSignedMoney(n: number): string {
+  const rounded = Math.round(n);
+  const sign = rounded < 0 ? "−" : "+";
+  return `${sign}$${Math.abs(rounded).toLocaleString("en-US")}`;
+}
+
+/** "6.5%" — a Metrics-style percent value (already 0-100 scale) to one decimal. */
+export function formatPct(n: number, digits = 1): string {
+  return `${n.toFixed(digits)}%`;
+}
+
+/** "$150k" — compact dollar formatting for dense tables (compare, pinned scenarios). */
+export function formatMoneyCompact(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${n < 0 ? "−" : ""}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${n < 0 ? "−" : ""}$${Math.round(abs / 1000)}k`;
+  return formatMoney(n);
+}

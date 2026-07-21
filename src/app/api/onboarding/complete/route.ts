@@ -77,6 +77,13 @@ export async function POST(req: NextRequest) {
   // Telegram seconds ago, and the scan below should deliver to them if so.
   profile.telegramChatId = (await store.loadProfile(userId))?.telegramChatId ?? null;
 
+  // Opt-in gate: scans are paused until RENTCAST_ENABLED=true. The profile
+  // above is still fully validated, saved, and marked onboarded — only the
+  // scan itself is skipped.
+  if (process.env.RENTCAST_ENABLED !== "true") {
+    return NextResponse.json({ ok: true, scan: null, reason: "scans_paused" });
+  }
+
   const rentcastKey = process.env.RENTCAST_API_KEY;
   if (!rentcastKey) {
     console.error("Onboarding complete: RENTCAST_API_KEY is not configured; skipping initial scan.");
@@ -100,6 +107,7 @@ export async function POST(req: NextRequest) {
       new Set(), // per-user initial scan: never consults or updates the global seen_listings table
       {
         getRent: (listing) => fetchRentFor(rentcast, listing),
+        persistSnapshot: (listing, rent) => store.saveSnapshot(listing.id, listing, rent),
         deliver: async (record: VerdictRecord) => {
           await store.appendVerdict(record);
           if (!record.wouldText) return;

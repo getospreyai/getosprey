@@ -51,8 +51,28 @@ TELEGRAM_BOT_TOKEN      (same bot as dev: @OspreyAlphaBot)
 TELEGRAM_WEBHOOK_SECRET (new — verified on /api/telegram)
 CRON_SECRET             (new — verified on /api/cron/scan)
 RENTCAST_API_KEY
-ANTHROPIC_API_KEY       (optional; keyword-only without it)
+RENTCAST_ENABLED        (optional; "true" enables market scans — unset pauses them)
+OPENROUTER_API_KEY      (optional; keyword-only without it — free models via OpenRouter)
+OSPREY_LLM_MODEL        (optional override; defaults to openai/gpt-oss-20b:free)
 ```
+
+## Property Files v1 (2026-07-19, second wave)
+
+Per-property depth layer — spec and rationale in `FEATURES-V1-PLAN.md`:
+
+- **Listing snapshots**: the scan persists the RentCast listing + rent estimate
+  (`listing_snapshots`) so `/property/[listingId]`, `/compare` and reports can
+  re-run the engine later. Scan cost unchanged — data was already in hand.
+- **Scenario Studio** (`POST /api/property/[id]/scenario`): arbitrary
+  `FinancingProfile` + assumption overrides through `underwrite()`/`project()`.
+  Pure math, no LLM.
+- **AI research report**: paused — coming-soon teaser in UI; full
+  implementation preserved in git history.
+- **LLM layer**: OpenRouter (free models for MVP), env-selectable model ids;
+  RentCast scans gated behind `RENTCAST_ENABLED`.
+- **Public share links** (`share_links`, `/r/[token]`): read-only property
+  report a realtor forwards to a client — no auth; that page calls
+  `ensureSchema()` itself since it's reachable with zero prior authed traffic.
 
 ## Deliberately punted (post-MVP)
 

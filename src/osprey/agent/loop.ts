@@ -29,6 +29,9 @@ export interface ScanDeps {
   /** May perform async delivery (e.g. a Telegram send); awaited so serverless
    *  invocations complete before the function exits. */
   deliver: (record: VerdictRecord) => void | Promise<void>;
+  /** Persist the raw RentCast payloads so later features can re-run the engine.
+   *  Called (best-effort) after a matched listing gets a usable rent estimate. */
+  persistSnapshot?: (listing: RentCastListing, rent: RentCastRentEstimate) => Promise<void>;
   log?: (line: string) => void;
 }
 
@@ -67,6 +70,16 @@ export async function runScan(
     if (!income) {
       log(`  no rent estimate for ${listing.id}, skipping`);
       continue;
+    }
+
+    // Persist the raw payloads for on-demand re-underwriting. Best-effort: a
+    // snapshot write must never abort the scan (rentEstimate is defined here).
+    if (deps.persistSnapshot && rentEstimate) {
+      try {
+        await deps.persistSnapshot(listing, rentEstimate);
+      } catch (err) {
+        log(`  snapshot persist failed for ${listing.id}: ${String(err)}`);
+      }
     }
 
     for (const investor of interested) {

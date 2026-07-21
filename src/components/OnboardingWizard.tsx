@@ -5,7 +5,7 @@ import type { FinancingProfile, PropertyType } from "@/osprey/engine/types";
 import type { ScanSummary } from "@/osprey/agent/loop";
 
 type PresetKey = "conventional" | "dscr" | "fha" | "cash";
-type Phase = "form" | "scanning" | "results" | "snag" | "error";
+type Phase = "form" | "scanning" | "results" | "snag" | "paused" | "error";
 
 const PROPERTY_TYPES: PropertyType[] = ["single_family", "duplex", "triplex", "fourplex"];
 const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
@@ -320,6 +320,8 @@ export default function OnboardingWizard({
       if (data?.scan) {
         setScan(data.scan as ScanSummary);
         setPhase("results");
+      } else if (data?.reason === "scans_paused") {
+        setPhase("paused");
       } else {
         setPhase("snag");
       }
@@ -351,6 +353,21 @@ export default function OnboardingWizard({
       <div className={`${cardClass} flex flex-col items-center gap-4 py-14 text-center`}>
         <p className="text-base font-medium text-white">
           Your first scan hit a snag — the daily scan will cover you tomorrow.
+        </p>
+        <a href="/dashboard" className={primaryButtonClass}>
+          Open my dashboard
+        </a>
+      </div>
+    );
+  }
+
+  if (phase === "paused") {
+    return (
+      <div className={`${cardClass} flex flex-col items-center gap-4 py-14 text-center`}>
+        <p className="text-base font-medium text-white">You&apos;re all set.</p>
+        <p className="max-w-md text-sm text-white/60">
+          Live market scans are paused right now — your buy box is saved and verdicts will start
+          arriving as soon as scans resume.
         </p>
         <a href="/dashboard" className={primaryButtonClass}>
           Open my dashboard

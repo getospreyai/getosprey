@@ -57,3 +57,37 @@ CREATE TABLE IF NOT EXISTS tg_anchors (
   created_at  TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (chat_id, message_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Property Files v1 (phase 1). Mirrors src/lib/db.ts ensureSchema().
+-- ---------------------------------------------------------------------------
+
+-- Raw RentCast payloads persisted at scan time so every property feature can
+-- re-run the engine on demand without re-hitting the paid AVM/listing APIs.
+CREATE TABLE IF NOT EXISTS listing_snapshots (
+  listing_id  TEXT PRIMARY KEY,
+  listing     JSONB NOT NULL,        -- RentCastListing verbatim
+  rent        JSONB,                 -- RentCastRentEstimate verbatim (incl. comparables)
+  captured_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- On-demand LLM research reports, cached forever after first generation.
+CREATE TABLE IF NOT EXISTS property_reports (
+  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+  listing_id  TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'generating',  -- 'generating' | 'ready' | 'failed'
+  report      JSONB,                 -- structured report; null while generating
+  model       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (user_id, listing_id)
+);
+
+-- Read-only public share tokens a realtor forwards to a client.
+CREATE TABLE IF NOT EXISTS share_links (
+  token       TEXT PRIMARY KEY,      -- crypto.randomUUID() without dashes
+  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+  listing_id  TEXT NOT NULL,
+  revoked     BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);

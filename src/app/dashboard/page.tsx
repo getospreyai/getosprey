@@ -3,12 +3,13 @@ import { auth } from "@/auth";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import TelegramConnectCard from "@/components/TelegramConnectCard";
+import VerdictList from "@/components/VerdictList";
 import { hasDb } from "@/lib/db";
 import { PgStore } from "@/osprey/pg-store";
 import type { InvestorProfile, BuyBox } from "@/osprey/agent/model";
 import type { VerdictRecord } from "@/osprey/agent/loop";
 import type { PropertyType } from "@/osprey/engine/types";
-import { formatMoney, formatSignedMonthly, relativeTime } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 
 const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
   single_family: "Single-family",
@@ -149,55 +150,7 @@ export default async function DashboardPage() {
                   </a>
                 </div>
               ) : (
-                <div className="flex flex-col gap-3">
-                  {verdicts.map((v) => {
-                    const clearsBar = v.monthlyCashFlow >= profile.minMonthlyCashFlow;
-                    return (
-                      <div
-                        key={`${v.listingId}-${v.at}`}
-                        className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 backdrop-blur-md"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-medium text-white">{v.address}</p>
-                            <p className="mt-0.5 text-xs text-white/50">
-                              {formatMoney(v.price)} · {v.financingLabel}
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <span
-                              className={
-                                clearsBar
-                                  ? "text-sm font-medium text-emerald-400"
-                                  : "text-sm font-medium text-white/60"
-                              }
-                            >
-                              {formatSignedMonthly(v.monthlyCashFlow)}
-                            </span>
-                            <span className="text-xs text-white/40">
-                              {v.wouldText ? "📨 Sent" : "· Quiet"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex items-center justify-between text-xs text-white/40">
-                          <span>{relativeTime(v.at)}</span>
-                        </div>
-
-                        {v.analysis && (
-                          <details className="mt-3 text-xs text-white/60">
-                            <summary className="cursor-pointer select-none text-violet-300 hover:text-violet-200">
-                              Full analysis
-                            </summary>
-                            <pre className="mt-2 whitespace-pre-wrap break-words font-[family-name:var(--font-geist-mono)] text-[11px] leading-relaxed text-white/60">
-                              {v.analysis}
-                            </pre>
-                          </details>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                <VerdictList verdicts={verdicts} minMonthlyCashFlow={profile.minMonthlyCashFlow} />
               )}
             </div>
           </>
