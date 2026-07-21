@@ -36,14 +36,15 @@ export default function PrivacyPolicy() {
         <section>
           <h2 className="text-lg font-semibold text-white">1. Who we are and what this covers</h2>
           <p className="mt-2">
-            Osprey (&quot;Osprey,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) operates
+            Osprey LLC (&quot;Osprey,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) operates
             the website at getosprey.ai and the Osprey real-estate analysis service, including our
             Telegram bot. This policy describes what information we collect, how we use it, who we
             share it with, and the choices you have. It applies to visitors to our website, people
             who join our waitlist, and account holders who use the service.
           </p>
           <p className="mt-2">
-            Osprey is operated from Nevada and is intended for users in the United States. We do not
+            Osprey LLC is a Nevada limited liability company, and the service is intended for users in
+            the United States. We do not
             knowingly collect information from children under 13, and the service is not directed to
             them.
           </p>
@@ -119,28 +120,28 @@ export default function PrivacyPolicy() {
             independently before acting on them.
           </p>
           <p className="mt-2">
-            <span className="text-white">
-              Content sent to our AI provider may be used to improve their models.
-            </span>{" "}
-            To process the requests described above, we send the relevant content — which can include
-            the text of the messages you send the bot, your buy-box criteria, property addresses, and
-            the underwriting figures for deals in your feed — to our AI provider, OpenRouter, and the
-            upstream model providers it routes to. We currently use free model endpoints, and under
-            those endpoints&apos; terms your content may be logged and used to train or improve those
-            providers&apos; models. This is a meaningful limitation and we want you to know it up
-            front rather than discover it later.
+            <span className="text-white">Who processes this content.</span> To process the requests
+            described above, we send the relevant content — which can include the text of the
+            messages you send the bot, your buy-box criteria, property addresses, and the underwriting
+            figures for deals in your feed — to our AI provider, OpenRouter, and the upstream model
+            providers it routes to.
           </p>
           <p className="mt-2">
-            Because of this, do not send information to the bot that you would not want retained by a
-            third-party AI provider. If you would rather not have your messages processed this way,
-            you can use the dashboard instead of the bot, use only the keyword commands (which are
-            handled entirely by our own software and are never sent to an AI provider), or contact us
-            at{" "}
+            <span className="text-white">We do not permit this content to be used to train AI models.</span>{" "}
+            We have opted out of the training/logging option OpenRouter otherwise offers on free model
+            endpoints, so your content is used to generate your response and is not retained by
+            OpenRouter or its upstream providers to improve their models. If that ever changes — for
+            example, if we move to a different provider or plan — we will update this section and
+            give you prominent notice before the change takes effect, not after.
+          </p>
+          <p className="mt-2">
+            You can also avoid sending anything to our AI provider at all by using only the keyword
+            commands in Telegram (handled entirely by our own software) or the dashboard instead of
+            plain-English messages. Questions about this: {" "}
             <a href="mailto:privacy@getosprey.ai" className="underline hover:text-white">
               privacy@getosprey.ai
-            </a>{" "}
-            to disable AI message handling on your account. If we move to endpoints that do not train
-            on customer content, we will update this section and say so.
+            </a>
+            .
           </p>
         </section>
 

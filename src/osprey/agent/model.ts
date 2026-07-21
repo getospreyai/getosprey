@@ -30,8 +30,6 @@ export interface Dealbreakers {
 export interface InvestorProfile {
   id: string;
   name: string;
-  /** E.164, for the eventual SMS channel (post-MVP; Telegram is the MVP channel). */
-  phone?: string | null;
   /** Telegram chat id, bound when the user opens t.me/<bot>?start=<id>. */
   telegramChatId?: number | null;
   buyBox: BuyBox;

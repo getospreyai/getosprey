@@ -77,5 +77,6 @@ Per-property depth layer — spec and rationale in `FEATURES-V1-PLAN.md`:
 ## Deliberately punted (post-MVP)
 
 Payments/pricing tiers · email verification + password reset · OAuth ·
-per-metro scan config UI · SMS channel (Twilio, behind same seams) ·
-admin panel · rate limiting beyond Vercel defaults.
+per-metro scan config UI · admin panel · rate limiting beyond Vercel
+defaults. SMS (Twilio) was the pre-MVP channel, replaced by Telegram
+2026-07-19; not on the roadmap (Dylan's call, 2026-07-21).

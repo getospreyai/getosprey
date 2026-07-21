@@ -28,9 +28,10 @@ export default function TermsOfService() {
           <h2 className="text-lg font-semibold text-white">1. Agreement</h2>
           <p className="mt-2">
             These Terms of Service govern your access to and use of the Osprey website, dashboard,
-            and Telegram bot (together, the &quot;Service&quot;). By creating an account, joining the
-            waitlist, or using the Service, you agree to these terms. If you do not agree, do not use
-            the Service. Our{" "}
+            and Telegram bot (together, the &quot;Service&quot;), operated by Osprey LLC, a Nevada
+            limited liability company (&quot;Osprey,&quot; &quot;we,&quot; &quot;us,&quot; or
+            &quot;our&quot;). By creating an account, joining the waitlist, or using the Service, you
+            agree to these terms. If you do not agree, do not use the Service. Our{" "}
             <Link href="/privacy" className="underline hover:text-white">
               Privacy Policy
             </Link>{" "}
