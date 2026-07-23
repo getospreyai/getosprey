@@ -222,6 +222,12 @@ export default function Home() {
                 pricing.
               </p>
               <WaitlistForm />
+              <Link
+                href="/try"
+                className="mt-4 inline-flex items-center gap-1.5 text-sm text-white/50 transition hover:text-white/80"
+              >
+                See a live verdict <span aria-hidden>→</span>
+              </Link>
             </div>
           </div>
 
@@ -397,6 +403,14 @@ export default function Home() {
           >
             Join the waitlist
           </a>
+          <div>
+            <Link
+              href="/try"
+              className="mt-4 inline-block text-sm text-white/50 underline decoration-white/20 underline-offset-4 transition hover:text-white/80"
+            >
+              Or try it first →
+            </Link>
+          </div>
 
           <div className="mt-10 flex items-center justify-center gap-3">
             {socials.map((s) => (
