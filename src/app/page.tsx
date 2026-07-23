@@ -144,6 +144,10 @@ const features = [
     title: "Sunday digest",
     body: "A weekly recap: what it scanned, what came closest, and whether your cash-flow bar is realistic for your market.",
   },
+  {
+    title: "Just ask",
+    body: "Run a what-if, question any number, or pass with a reason — in plain English, right in the chat. Osprey answers, and learns what you're after.",
+  },
 ];
 
 const portalPoints = [
@@ -274,10 +278,15 @@ export default function Home() {
             </span>
           </h2>
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((f) => (
+            {features.map((f, i) => (
               <div
                 key={f.title}
-                className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md"
+                // 9 cards = a clean 3x3 at lg. At the 2-col (sm) breakpoint that
+                // would orphan the last card, so it spans both columns there —
+                // a deliberate full-width closer instead of a lone half-row.
+                className={`rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md${
+                  i === features.length - 1 ? " sm:col-span-2 lg:col-span-1" : ""
+                }`}
               >
                 <h3 className="text-lg font-medium">{f.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-white/60">{f.body}</p>
