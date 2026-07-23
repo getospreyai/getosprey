@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Backdrop from "@/components/Backdrop";
+import MarketingNav from "@/components/MarketingNav";
 import TryDemo from "@/components/TryDemo";
 import { DEMO_BAR, DEMO_DEALS, DEMO_FINANCING, dealProperty, rentIncome } from "@/lib/demo-deals";
 import { project, solveMaxOffer, underwrite } from "@/osprey/engine";
@@ -33,19 +34,7 @@ export default function TryPage() {
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#0a0718] text-white">
       <Backdrop />
 
-      <nav className="relative z-10 flex items-center justify-between px-6 py-6 sm:px-10">
-        <Link href="/" className="text-sm font-semibold tracking-tight">
-          Osprey
-        </Link>
-        <div className="flex items-center gap-5">
-          <Link href="/login" className="text-sm text-white/60 transition hover:text-white">
-            Log in
-          </Link>
-          <Link href="/#join" className="text-sm text-white/60 transition hover:text-white">
-            Join
-          </Link>
-        </div>
-      </nav>
+      <MarketingNav active="try" />
 
       <section className="relative z-10 px-6 pb-20 pt-8 sm:px-10 lg:pt-14">
         <div className="mx-auto max-w-3xl text-center">

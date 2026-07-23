@@ -1,6 +1,7 @@
 import Link from "next/link";
 import WaitlistForm from "@/components/WaitlistForm";
 import Backdrop from "@/components/Backdrop";
+import MarketingNav from "@/components/MarketingNav";
 import PhoneDemo from "@/components/PhoneDemo";
 
 // ---------------------------------------------------------------------------
@@ -56,28 +57,6 @@ function OspreyIcon({ className }: { className?: string }) {
     <FeatherIcon className={className} />
   ) : (
     <RaptorIcon className={className} />
-  );
-}
-
-/** The nav logo chip — the one place the video variant renders as video. */
-function NavLogo() {
-  if (LOGO_VARIANT === "video") {
-    return (
-      <video
-        src="/logo-osprey.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-        aria-hidden
-        className="h-7 w-7 rounded-lg object-cover"
-      />
-    );
-  }
-  return (
-    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-violet-200">
-      <OspreyIcon className="h-4 w-4" />
-    </span>
   );
 }
 
@@ -170,26 +149,7 @@ export default function Home() {
       <Backdrop />
 
       {/* nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-6 sm:px-10">
-        <div className="flex items-center gap-2">
-          <NavLogo />
-          <span className="text-sm font-semibold tracking-tight">Osprey</span>
-        </div>
-        <div className="flex items-center gap-5">
-          <a
-            href="/login"
-            className="text-sm text-white/60 transition hover:text-white"
-          >
-            Log in
-          </a>
-          <a
-            href="mailto:hello@getosprey.ai"
-            className="text-sm text-white/60 transition hover:text-white"
-          >
-            Need help?
-          </a>
-        </div>
-      </nav>
+      <MarketingNav />
 
       {/* hero */}
       <section className="relative z-10 px-6 pb-16 pt-8 sm:px-10 lg:pt-14">
@@ -224,9 +184,9 @@ export default function Home() {
               <WaitlistForm />
               <Link
                 href="/try"
-                className="mt-4 inline-flex items-center gap-1.5 text-sm text-white/50 transition hover:text-white/80"
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition hover:bg-white/[0.08]"
               >
-                See a live verdict <span aria-hidden>→</span>
+                Try a live verdict — no signup <span aria-hidden>→</span>
               </Link>
             </div>
           </div>
