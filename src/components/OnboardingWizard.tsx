@@ -68,6 +68,7 @@ const presetButtonClass =
 interface OnboardingPayload {
   buyBox: {
     cities: string[];
+    states: string[];
     minPrice: number | null;
     maxPrice: number | null;
     propertyTypes: PropertyType[];
@@ -81,6 +82,8 @@ interface OnboardingPayload {
 /** Wizard progress previously saved server-side (via the step-3 PATCH),
  *  passed down so a page reload can resume instead of restarting. */
 export interface SavedProgress {
+  city: string;
+  state: string;
   propertyTypes: PropertyType[];
   minPrice: number | null;
   maxPrice: number | null;
@@ -93,6 +96,8 @@ const STORAGE_KEY = "osprey-onboarding-v1";
 
 interface StoredState {
   step: 1 | 2 | 3;
+  city: string;
+  state: string;
   propertyTypes: PropertyType[];
   minPrice: string;
   maxPrice: string;
@@ -115,6 +120,8 @@ export default function OnboardingWizard({
   const [errorMsg, setErrorMsg] = useState("");
 
   // Step 1 — buy box
+  const [city, setCity] = useState("");
+  const [stateCode, setStateCode] = useState("");
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -148,6 +155,8 @@ export default function OnboardingWizard({
       if (raw) {
         const s = JSON.parse(raw) as StoredState;
         setStep(s.step);
+        setCity(s.city ?? "");
+        setStateCode(s.state ?? "");
         setPropertyTypes(s.propertyTypes ?? []);
         setMinPrice(s.minPrice ?? "");
         setMaxPrice(s.maxPrice ?? "");
@@ -162,6 +171,8 @@ export default function OnboardingWizard({
 
     if (saved && saved.propertyTypes.length > 0 && saved.financingProfiles.length > 0) {
       // They made it to step 3 before (the step-3 PATCH saved this) — resume there.
+      setCity(saved.city);
+      setStateCode(saved.state);
       setPropertyTypes(saved.propertyTypes);
       setMinPrice(saved.minPrice == null ? "" : String(saved.minPrice));
       setMaxPrice(saved.maxPrice == null ? "" : String(saved.maxPrice));
@@ -180,6 +191,8 @@ export default function OnboardingWizard({
     try {
       const s: StoredState = {
         step,
+        city,
+        state: stateCode,
         propertyTypes,
         minPrice,
         maxPrice,
@@ -191,7 +204,7 @@ export default function OnboardingWizard({
     } catch {
       // storage unavailable (private mode etc.) — server-saved progress still covers reloads
     }
-  }, [step, propertyTypes, minPrice, maxPrice, maxDaysOnMarket, financingProfiles, minMonthlyCashFlow]);
+  }, [step, city, stateCode, propertyTypes, minPrice, maxPrice, maxDaysOnMarket, financingProfiles, minMonthlyCashFlow]);
 
   // Results
   const [scan, setScan] = useState<ScanSummary | null>(null);
@@ -201,7 +214,8 @@ export default function OnboardingWizard({
   function buildPayload(): OnboardingPayload {
     return {
       buyBox: {
-        cities: [],
+        cities: city.trim() === "" ? [] : [city.trim()],
+        states: stateCode.trim() === "" ? [] : [stateCode.trim()],
         minPrice: minPrice.trim() === "" ? null : Number(minPrice),
         maxPrice: maxPrice.trim() === "" ? null : Number(maxPrice),
         propertyTypes,
@@ -232,6 +246,10 @@ export default function OnboardingWizard({
   }
 
   function goToStep2() {
+    if (stateCode.trim() === "") {
+      setStep1Error("Enter your state — city is optional.");
+      return;
+    }
     if (propertyTypes.length === 0) {
       setStep1Error("Choose at least one property type.");
       return;
@@ -341,7 +359,7 @@ export default function OnboardingWizard({
           <span className="relative inline-flex h-3 w-3 rounded-full bg-violet-400" />
         </span>
         <p className="text-base font-medium text-white">
-          Osprey is underwriting the current Las Vegas market at your numbers…
+          Osprey is underwriting your market at your numbers…
         </p>
         <p className="text-sm text-white/50">This usually takes under a minute.</p>
       </div>
@@ -458,9 +476,28 @@ export default function OnboardingWizard({
           <div className="flex flex-col gap-4">
             <div>
               <label className="mb-1 block text-xs text-white/50">Market</label>
-              <span className="inline-flex items-center rounded-full border border-violet-400/30 bg-violet-500/[0.1] px-3.5 py-1.5 text-sm text-violet-200">
-                Las Vegas, NV — our first market
-              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="City (optional)"
+                  className={fieldClass}
+                />
+                <input
+                  type="text"
+                  value={stateCode}
+                  onChange={(e) =>
+                    setStateCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))
+                  }
+                  maxLength={2}
+                  placeholder="State"
+                  className={fieldClass}
+                />
+              </div>
+              <p className={helpClass}>
+                City optional — leave it blank and Osprey scans the whole state.
+              </p>
             </div>
 
             <div>
@@ -612,8 +649,8 @@ export default function OnboardingWizard({
               />
               <p className={helpClass}>
                 Osprey only messages you when a deal clears this monthly cash flow at your
-                financing. At today&apos;s rates most Las Vegas listings run negative at 25% down
-                — a bar near $0 means only standout deals; a negative bar shows you the best of
+                financing. At today&apos;s rates a lot of listings run negative at 25% down —
+                a bar near $0 means only standout deals; a negative bar shows you the best of
                 the market.
               </p>
             </div>

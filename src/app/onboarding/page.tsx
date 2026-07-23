@@ -47,6 +47,8 @@ export default async function OnboardingPage() {
             userId={userId}
             initialConnected={profile.telegramChatId != null}
             saved={{
+              city: (profile.buyBox.cities ?? [])[0] ?? "",
+              state: (profile.buyBox.states ?? [])[0] ?? "",
               propertyTypes: profile.buyBox.propertyTypes,
               minPrice: profile.buyBox.minPrice ?? null,
               maxPrice: profile.buyBox.maxPrice ?? null,

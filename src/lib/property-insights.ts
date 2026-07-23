@@ -51,7 +51,8 @@ export function computePropertyInsights(params: {
     maxOffer: solveMaxOffer(solverInput),
     clearingRate: solveClearingRate(solverInput),
     stress: stressAtRangeLow({ property, income, financing: uw.financing, assumptions: uw.assumptions, bar }),
-    section8: params.bedrooms != null ? section8Standard(params.bedrooms) : null,
+    section8:
+      params.bedrooms != null ? section8Standard(params.bedrooms, property.state, property.city) : null,
     comparables: topComparables(params.rawComparables),
   };
 }

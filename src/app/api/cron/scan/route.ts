@@ -1,8 +1,11 @@
-// Daily Vercel cron: pull a fresh RentCast batch, underwrite it against every
-// investor's buy box, and deliver verdicts (ledger always; Telegram when the
-// investor cleared their alert bar and has a bound chat). Also re-underwrites
-// already-known listings whose price moved (see onSeenListing below) and
-// records this run's tallies for the Sunday digest.
+// Daily Vercel cron: for every distinct market onboarded profiles actually
+// asked for (derived from their buy boxes, capped at OSPREY_MAX_MARKETS —
+// see deriveMarkets), pull a fresh RentCast batch, underwrite it against
+// every investor's buy box, and deliver verdicts (ledger always; Telegram
+// when the investor cleared their alert bar and has a bound chat). Also
+// re-underwrites already-known listings whose price moved (see
+// onSeenListing below) and records this run's tallies for the Sunday
+// digest.
 
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, hasDb } from "@/lib/db";
@@ -19,8 +22,15 @@ import {
   type RentCastListing,
   type Underwriting,
 } from "@/osprey/engine";
-import { fetchBatch, fetchRentFor } from "@/osprey/agent/watcher";
-import { runScan, type VerdictRecord } from "@/osprey/agent/loop";
+import {
+  buyBoxTargetsMarket,
+  deriveMarkets,
+  fetchBatch,
+  fetchRentFor,
+  marketLabel,
+  type WatchTarget,
+} from "@/osprey/agent/watcher";
+import { runScan, type ScanSummary, type VerdictRecord } from "@/osprey/agent/loop";
 import { matchesBuyBox } from "@/osprey/agent/matcher";
 import { TelegramClient } from "@/osprey/agent/telegram";
 import { buildWeeklyDigest } from "@/osprey/agent/digest";
@@ -57,15 +67,7 @@ export async function GET(req: NextRequest) {
 
     const store = new PgStore();
     const rentcast = new RentCastClient({ apiKey: rentcastKey });
-    const city = process.env.OSPREY_CITY || "Las Vegas";
-    const state = process.env.OSPREY_STATE || "NV";
 
-    // Full active-set pull (no daysOld): one daily paginated fetch serves
-    // both the new-listing pipeline (unseen ids, below) and the price-cut
-    // pipeline (seen ids, onSeenListing) — daysOld alone would miss price
-    // cuts on listings older than the window. See wave2-research.md
-    // RECOMMENDATIONS §1.
-    const batch = await fetchBatch(rentcast, { city, state });
     const allProfiles = await store.loadAllProfiles();
     // Skip half-configured profiles: onboarded === false is explicitly mid-wizard
     // (undefined covers legacy/CLI profiles predating onboarding, which are
@@ -79,11 +81,28 @@ export async function GET(req: NextRequest) {
     );
     const profileById = new Map(profiles.map((p) => [p.id, p]));
 
-    // runScan skips ids already in `seen`; markSeen only the ones that were
-    // genuinely new to this run, once the scan completes.
-    const batchIds = batch.listings.map((l) => l.id);
-    const unseenIds = await store.filterUnseen(batchIds);
-    const seen = new Set(batchIds.filter((id) => !unseenIds.has(id)));
+    // Nationwide: scan every distinct market onboarded profiles actually
+    // asked for. Capped — each market is its own full paginated RentCast
+    // pull (~12-20 calls), so cost scales linearly with market count.
+    // OSPREY_CITY/OSPREY_STATE, when set, override this entirely and scan
+    // just that one market (today's pre-nationwide behavior, kept as an
+    // escape hatch).
+    const envState = process.env.OSPREY_STATE;
+    const maxMarkets = Number(process.env.OSPREY_MAX_MARKETS) || 5;
+    let markets: WatchTarget[];
+    if (envState) {
+      markets = [{ city: process.env.OSPREY_CITY || undefined, state: envState }];
+    } else {
+      const derived = deriveMarkets(profiles);
+      if (derived.length > maxMarkets) {
+        console.warn(
+          `Cron scan: ${derived.length} distinct markets from onboarded profiles, ` +
+            `capping to ${maxMarkets} (raise via OSPREY_MAX_MARKETS). Dropped: ` +
+            derived.slice(maxMarkets).map(marketLabel).join("; ")
+        );
+      }
+      markets = derived.slice(0, maxMarkets);
+    }
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const telegram = token ? new TelegramClient(token) : null;
@@ -215,31 +234,79 @@ export async function GET(req: NextRequest) {
       }
     };
 
-    const summary = await runScan(batch, profiles, seen, {
-      getRent: (listing) => fetchRentFor(rentcast, listing),
-      persistSnapshot: (listing, rent) => store.saveSnapshot(listing.id, listing, rent),
-      onSeenListing,
-      deliver: async (record: VerdictRecord) => {
-        await store.appendVerdict(record);
-        if (!record.wouldText) return;
+    const summary: ScanSummary = { scanned: 0, inNiche: 0, matched: 0, underwritten: 0, texts: 0 };
 
-        const chatId = profileById.get(record.investorId)?.telegramChatId;
-        if (chatId == null || !telegram) return;
+    for (const market of markets) {
+      // Full active-set pull (no daysOld): one daily paginated fetch serves
+      // both the new-listing pipeline (unseen ids, below) and the price-cut
+      // pipeline (seen ids, onSeenListing) — daysOld alone would miss price
+      // cuts on listings older than the window. See wave2-research.md
+      // RECOMMENDATIONS §1.
+      const batch = await fetchBatch(rentcast, market);
 
-        try {
-          const messageId = await telegram.sendMessage(chatId, record.sms, {
-            verdictButtons: true,
-          });
-          if (messageId != null) await store.saveTgAnchor(chatId, messageId, record.listingId);
-        } catch (err) {
-          console.error(`telegram send failed (${record.investorId}):`, err);
-        }
-      },
-      log: (line) => console.log(line),
+      // Pre-scoped to profiles whose buy box could want this market —
+      // matchesBuyBox (inside runScan) still does the authoritative
+      // per-listing check; this just keeps every market's batch from being
+      // re-checked against the full nationwide profile table.
+      const marketProfiles = profiles.filter((p) => buyBoxTargetsMarket(p.buyBox, market));
+
+      // runScan skips ids already in `seen`; markSeen only the ones that
+      // were genuinely new to this run. Marked immediately per market
+      // (not batched across the whole run) so overlapping markets — e.g. a
+      // whole-state target and one of its own cities — can't both process
+      // the same listing as "new" in a single cron invocation.
+      const batchIds = batch.listings.map((l) => l.id);
+      const unseenIds = await store.filterUnseen(batchIds);
+      const seen = new Set(batchIds.filter((id) => !unseenIds.has(id)));
+
+      const marketSummary = await runScan(batch, marketProfiles, seen, {
+        getRent: (listing) => fetchRentFor(rentcast, listing),
+        persistSnapshot: (listing, rent) => store.saveSnapshot(listing.id, listing, rent),
+        onSeenListing,
+        deliver: async (record: VerdictRecord) => {
+          await store.appendVerdict(record);
+          if (!record.wouldText) return;
+
+          const chatId = profileById.get(record.investorId)?.telegramChatId;
+          if (chatId == null || !telegram) return;
+
+          try {
+            const messageId = await telegram.sendMessage(chatId, record.sms, {
+              verdictButtons: true,
+            });
+            if (messageId != null) await store.saveTgAnchor(chatId, messageId, record.listingId);
+          } catch (err) {
+            console.error(`telegram send failed (${record.investorId}):`, err);
+          }
+        },
+        log: (line) => console.log(`[${marketLabel(market)}] ${line}`),
+      });
+
+      await store.markSeen([...unseenIds]);
+
+      summary.scanned += marketSummary.scanned;
+      summary.inNiche += marketSummary.inNiche;
+      summary.matched += marketSummary.matched;
+      summary.underwritten += marketSummary.underwritten;
+      summary.texts += marketSummary.texts;
+    }
+
+    console.log(`Cron scan: ${markets.length} market(s) — ${markets.map(marketLabel).join("; ")}`);
+
+    // city/state stay single TEXT columns (schema unchanged) — the market
+    // count lives in the log line above, not here. Single-market runs (the
+    // common case, and every OSPREY_STATE override) record exactly the
+    // plain city/state they always did.
+    await store.recordScanRun({
+      city:
+        markets.length === 1
+          ? (markets[0].city ?? "")
+          : markets.map((m) => m.city ?? "(statewide)").join(", "),
+      state:
+        markets.length === 1 ? markets[0].state : [...new Set(markets.map((m) => m.state))].join(","),
+      ...summary,
+      priceChanges,
     });
-
-    await store.markSeen([...unseenIds]);
-    await store.recordScanRun({ city, state, ...summary, priceChanges });
 
     // Sunday digest: deterministic text, no LLM (digest.ts). Only attempted
     // on Sunday in the product's home timezone, and only for investors with
@@ -282,7 +349,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, city, state, ...summary, priceChanges, digestsSent });
+    return NextResponse.json({
+      ok: true,
+      markets: markets.map(marketLabel),
+      ...summary,
+      priceChanges,
+      digestsSent,
+    });
   } catch (err) {
     console.error("Cron scan failed:", err);
     return NextResponse.json({ error: "scan failed" }, { status: 500 });

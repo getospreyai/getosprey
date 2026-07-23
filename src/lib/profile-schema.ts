@@ -4,9 +4,9 @@
 // exactly the same shape and merge the same way. id/name/telegramChatId
 // always come from the stored profile — the client can never touch them
 // (zod strips unknown keys, and the merge below only reads the specific
-// fields it allows). dealbreakers/tasteNotes are user-editable but OPTIONAL
-// in the payload: omitting either key leaves the stored value untouched, so
-// older clients that don't send them can't wipe them out.
+// fields it allows). dealbreakers/tasteNotes/buyBox.states are user-editable
+// but OPTIONAL in the payload: omitting any of them leaves the stored value
+// untouched, so older clients that don't send them can't wipe them out.
 
 import { z } from "zod";
 import type { InvestorProfile } from "@/osprey/agent/model";
@@ -94,6 +94,10 @@ export const DealbreakersSchema = z.object({
 export const PatchProfileSchema = z.object({
   buyBox: z.object({
     cities: z.array(z.string().min(1).max(80)).max(50),
+    /** Optional so callers that don't send it (e.g. the settings form today)
+     *  leave the stored market untouched — same never-clobber pattern as
+     *  dealbreakers/tasteNotes below. */
+    states: z.array(z.string().length(2)).max(50).optional(),
     minPrice: z.number().min(0).max(100_000_000).nullable(),
     maxPrice: z.number().min(0).max(100_000_000).nullable(),
     propertyTypes: z.array(PropertyTypeSchema).min(1),
@@ -123,6 +127,7 @@ export function mergeProfileSettings(
     buyBox: {
       ...stored.buyBox,
       cities: data.buyBox.cities,
+      states: data.buyBox.states ?? stored.buyBox.states,
       minPrice: data.buyBox.minPrice ?? undefined,
       maxPrice: data.buyBox.maxPrice ?? undefined,
       propertyTypes: data.buyBox.propertyTypes,

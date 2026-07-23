@@ -1,11 +1,12 @@
 // Onboarding wizard's final step: save the buy box / financing / alert bar
 // the user just set (same shape + validation as /api/profile PATCH), mark
 // the profile onboarded, and — inline, best-effort — run their first scan
-// against the current Las Vegas market. Mirrors the delivery logic in
-// /api/cron/scan, but scoped to this one investor and NOT touching
-// seen_listings: that table is global cron state, and a per-user initial
-// scan must not cause the next daily cron to skip listings this user has
-// already "seen" via onboarding.
+// against the market they just picked in step 1 (falls back to the
+// OSPREY_CITY/OSPREY_STATE env vars for the rare profile with none set).
+// Mirrors the delivery logic in /api/cron/scan, but scoped to this one
+// investor and NOT touching seen_listings: that table is global cron state,
+// and a per-user initial scan must not cause the next daily cron to skip
+// listings this user has already "seen" via onboarding.
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -92,8 +93,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const rentcast = new RentCastClient({ apiKey: rentcastKey });
-    const city = process.env.OSPREY_CITY || "Las Vegas";
-    const state = process.env.OSPREY_STATE || "NV";
+    // Prefer the market the user just set in step 1; env vars are only a
+    // fallback for the rare profile that reached onboarded=true without one.
+    const city = profile.buyBox.cities?.[0] || process.env.OSPREY_CITY || "Las Vegas";
+    const state = profile.buyBox.states?.[0] || process.env.OSPREY_STATE || "NV";
 
     const batch = await fetchBatch(rentcast, { city, state, daysOld: 7 });
     const listings = batch.listings.slice(0, INITIAL_SCAN_LIMIT);

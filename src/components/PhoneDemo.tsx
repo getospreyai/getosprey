@@ -1,11 +1,13 @@
-// A rendered Telegram thread showing an Osprey verdict, mirroring the real
-// bot: verdict message with one-tap Analyze / Pass / Save buttons, typed
-// replies work too. The financials are genuine output from the underwriting
-// engine for these inputs ($415k fourplex, $3,850/mo est. rent, 25% down
-// conventional @ 6.75%), but the property is illustrative — the address is
-// fictional on purpose. Never put a real address on this page: pairing a
-// specific property with hypothetical financials reads as a representation
-// about that property.
+// A rendered Telegram thread showing a conversational Osprey exchange — the
+// investor talks in plain English (LLM intent parsing, not keyword commands)
+// to re-run the deal at a different down payment, solve for the max offer,
+// then pass with a reason Osprey notes for next time. The financials are
+// genuine output from the underwriting engine for these inputs ($415k
+// fourplex, $3,850/mo est. rent, 25% down conventional @ 6.75%), but the
+// property is illustrative — the address is fictional on purpose, and
+// deliberately has no city since Osprey is nationwide now. Never put a real
+// address on this page: pairing a specific property with hypothetical
+// financials reads as a representation about that property.
 
 function OspreyBubble({ children }: { children: React.ReactNode }) {
   return (
@@ -45,7 +47,7 @@ function VerdictButtons() {
 export default function PhoneDemo() {
   return (
     <div
-      aria-label="Example Osprey Telegram conversation: Osprey sends a cash-flow verdict on a fourplex with Analyze, Pass, and Save buttons; the investor taps Analyze for the full breakdown, then passes and Osprey learns the preference."
+      aria-label="Example Osprey Telegram conversation: Osprey sends a cash-flow verdict on a fourplex with Analyze, Pass, and Save buttons; the investor asks in plain English what 20% down would look like and how high they could offer, gets both answered inline, then passes with a reason and Osprey notes the preference."
       className="mx-auto w-full max-w-[340px] rounded-[2.5rem] border border-white/15 bg-[#0d0a1f]/90 p-3 shadow-[0_25px_80px_rgba(99,88,238,0.25)] backdrop-blur-md"
     >
       <div className="rounded-[2rem] bg-[#07051a] px-4 pb-5 pt-4">
@@ -68,34 +70,41 @@ export default function PhoneDemo() {
         {/* thread */}
         <div className="flex flex-col gap-2.5">
           <OspreyBubble>
-            🦅 New match: Fourplex · 1400 Kestrel Hollow Ct, Las Vegas —
-            $415,000
+            🦅 New match: Fourplex · 1400 Kestrel Hollow Ct — $415,000
             <br />
             At your 25% down conventional:{" "}
-            <span className="font-semibold text-emerald-300">+$633/mo</span>{" "}
+            <span className="font-semibold text-emerald-300">+$494/mo</span>{" "}
             (est. rent $3,850/mo)
             <br />
             <span className="text-white/60">
-              Cap 7.7% · CoC 6.5% · DSCR 1.64
+              Cap 7.3% · CoC 5.1% · DSCR 1.55
             </span>
             <br />
-            Tap a button — or just type. A for the breakdown, P to pass.
+            Tap a button — or just talk to me.
           </OspreyBubble>
           <VerdictButtons />
 
-          <UserBubble>A</UserBubble>
+          <UserBubble>what if I only put 20% down?</UserBubble>
 
           <OspreyBubble>
-            Down $103,750 · P&amp;I $2,019/mo · NOI $2,651/mo →{" "}
-            <span className="font-semibold text-emerald-300">+$633/mo</span> at
-            your numbers. Break-even occupancy 79%. Want the 10-year hold
-            projection?
+            20% down →{" "}
+            <span className="font-semibold text-emerald-300">+$360/mo</span>.
+            $20,750 less cash in the deal, $134/mo less cash flow.
+            Cash-on-cash slips 5.1% → 4.5%.
           </OspreyBubble>
 
-          <UserBubble>P — too far east for me</UserBubble>
+          <UserBubble>how high could I go and still clear $300?</UserBubble>
 
           <OspreyBubble>
-            Passed. I&apos;ll factor that into what I send you next.
+            Up to <span className="font-semibold">$447,500</span> — 7.8%
+            above ask. At $415k you&apos;ve got room to compete.
+          </OspreyBubble>
+
+          <UserBubble>pass, too far from my other units</UserBubble>
+
+          <OspreyBubble>
+            Passed. Noted that you like your doors close together —
+            I&apos;ll weigh that next time.
           </OspreyBubble>
         </div>
       </div>

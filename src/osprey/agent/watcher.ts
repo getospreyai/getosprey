@@ -1,10 +1,12 @@
 // The Watcher: pulls active listings, filters to never-seen ids, and hands
 // them to the loop. Data source is RentCast today; the fixture path exists so
-// everything downstream runs without an API key.
+// everything downstream runs without an API key. Also owns deriving WatchTarget
+// markets from investor buy boxes (deriveMarkets) for the multi-market cron.
 
 import { readFileSync } from 'node:fs';
 import type { RentCastListing, RentCastRentEstimate } from '../engine/index';
 import { RentCastClient } from '../engine/index';
+import type { BuyBox } from './model';
 
 export interface WatchTarget {
   city?: string;
@@ -27,6 +29,59 @@ export interface ListingBatch {
   listings: RentCastListing[];
   /** Rent estimates keyed by listing id (fixtures provide these inline). */
   rentEstimates: Map<string, RentCastRentEstimate>;
+}
+
+/** Human-readable market label for logs, e.g. "Las Vegas, NV" or "NV". */
+export function marketLabel(target: WatchTarget): string {
+  return target.city ? `${target.city}, ${target.state}` : target.state;
+}
+
+/**
+ * Distinct scan targets across onboarded profiles' buy boxes — the
+ * cities x states cross product per profile (a profile with states but no
+ * cities contributes one whole-state target), deduped case-insensitively.
+ * Profiles with no state contribute nothing: RentCast requires a state per
+ * query, so a city-only buy box (no onboarding path produces one today) has
+ * no target to derive. Order is first-seen — deterministic, so the
+ * OSPREY_MAX_MARKETS cap always drops the same targets given the same
+ * profile order, which is what makes this fixture-testable.
+ */
+export function deriveMarkets(profiles: { buyBox: BuyBox }[]): WatchTarget[] {
+  const byKey = new Map<string, WatchTarget>();
+  for (const { buyBox } of profiles) {
+    const states = buyBox.states ?? [];
+    const cities = buyBox.cities ?? [];
+    for (const rawState of states) {
+      const state = rawState.toUpperCase();
+      if (cities.length === 0) {
+        const key = `|${state}`;
+        if (!byKey.has(key)) byKey.set(key, { state });
+        continue;
+      }
+      for (const city of cities) {
+        const key = `${city.toLowerCase()}|${state}`;
+        if (!byKey.has(key)) byKey.set(key, { city, state });
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
+/** Does this buy box include the given market? Mirrors matchesBuyBox's
+ *  state/city rules (case-insensitive; an empty states/cities list on the
+ *  box means "no restriction" on that dimension, i.e. a whole-state box
+ *  matches every city market within that state). Used to scope which
+ *  profiles a market's batch is worth checking against — matchesBuyBox
+ *  still does the authoritative per-listing check. */
+export function buyBoxTargetsMarket(box: BuyBox, target: WatchTarget): boolean {
+  if (box.states?.length) {
+    if (!box.states.some((s) => s.toUpperCase() === target.state)) return false;
+  }
+  const targetCity = target.city;
+  if (targetCity && box.cities?.length) {
+    if (!box.cities.some((c) => c.toLowerCase() === targetCity.toLowerCase())) return false;
+  }
+  return true;
 }
 
 /** Page size for the full-pull branch — RentCast's max per call. */

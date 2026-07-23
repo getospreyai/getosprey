@@ -111,6 +111,41 @@ const steps = [
   },
 ];
 
+const features = [
+  {
+    title: "Max-offer solver",
+    body: "Doesn't clear at asking? Osprey solves for the price that would — so every near-miss becomes a negotiation target instead of a dead end.",
+  },
+  {
+    title: "Scenario Studio",
+    body: "Re-run any deal at a different rate, down payment, or loan type — FHA, conventional, DSCR, cash — without touching your saved buy box.",
+  },
+  {
+    title: "Side-by-side compare",
+    body: "Put up to four properties next to each other and see which one actually wins on the numbers that matter to you.",
+  },
+  {
+    title: "Rent you can check",
+    body: "Every rent estimate shows the comps behind it, the confidence range, and whether the deal still clears at the low end.",
+  },
+  {
+    title: "Lender-ready packets",
+    body: "One tap turns any property into a branded PDF with the full underwrite, projections, and comps — ready to send to a lender or partner.",
+  },
+  {
+    title: "Client-ready share links",
+    body: "Forward a read-only analysis with your name on it. Built for agents who want to hand clients real numbers, not a listing link.",
+  },
+  {
+    title: "Price-cut watch",
+    body: "Osprey re-underwrites the deals you passed on. When a price drop turns a no into a yes, you hear about it.",
+  },
+  {
+    title: "Sunday digest",
+    body: "A weekly recap: what it scanned, what came closest, and whether your cash-flow bar is realistic for your market.",
+  },
+];
+
 const portalPoints = [
   "Every new listing, zero analysis",
   "You run the numbers at midnight",
@@ -158,7 +193,7 @@ export default function Home() {
           <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
             <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-xs text-violet-100 backdrop-blur-md">
               <OspreyIcon className="h-3.5 w-3.5" />
-              Launching first in Nevada · Single-family to fourplex
+              Nationwide coverage · Single-family to fourplex
             </span>
 
             <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -229,6 +264,29 @@ export default function Home() {
         </div>
       </section>
 
+      {/* feature showcase */}
+      <section className="relative z-10 px-6 py-16 sm:px-10">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+            Not just the verdict. The{" "}
+            <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
+              whole workup.
+            </span>
+          </h2>
+          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {features.map((f) => (
+              <div
+                key={f.title}
+                className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md"
+              >
+                <h3 className="text-lg font-medium">{f.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-white/60">{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* comparison */}
       <section className="relative z-10 px-6 py-16 sm:px-10">
         <div className="mx-auto max-w-4xl">
@@ -286,6 +344,31 @@ export default function Home() {
         </div>
       </section>
 
+      {/* agent / brokerage */}
+      <section className="relative z-10 px-6 py-16 sm:px-10">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-8 shadow-[0_0_45px_rgba(139,124,255,0.15)] backdrop-blur-md sm:p-10">
+          <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+            Built for the agent who{" "}
+            <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
+              works with investors.
+            </span>
+          </h2>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/70 sm:text-base">
+            One seat covers your whole client list. Hand any client a branded,
+            read-only analysis instead of a Zillow link, underwritten at{" "}
+            <span className="text-white/90">their</span> financing — not a
+            generic calculator. Show up to the next call as the most prepared
+            person in the room.
+          </p>
+          <a
+            href="mailto:hello@getosprey.ai"
+            className="mt-6 inline-block text-sm font-medium text-violet-200 underline decoration-violet-300/40 underline-offset-4 transition hover:text-violet-100"
+          >
+            Talk to us about brokerage access →
+          </a>
+        </div>
+      </section>
+
       {/* final CTA */}
       <section className="relative z-10 px-6 py-16 text-center sm:px-10">
         <div className="mx-auto max-w-xl">
@@ -296,8 +379,8 @@ export default function Home() {
             </span>
           </h2>
           <p className="mt-4 text-white/60">
-            Free to join. Nevada investors get the first verdicts — the rest of
-            the West is next.
+            Free to join. Set your market anywhere in the country — Osprey
+            hunts wherever you buy.
           </p>
           <a
             href="#join"

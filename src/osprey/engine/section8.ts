@@ -1,6 +1,13 @@
 // Section 8 (Housing Choice Voucher) payment standards — Southern Nevada
 // Regional Housing Authority (SNRHA), Clark County NV.
 //
+// This dataset is METRO-SPECIFIC (Las Vegas-Henderson-North Las Vegas MSA
+// only). Osprey is nationwide now, so section8Standard() below is gated on
+// state/city and returns null for anything outside this metro — a Phoenix
+// or Atlanta property must never display SNRHA's numbers. Every other
+// metro needs its own FMR table + its own gate before it can show a
+// Section 8 standard at all.
+//
 // SNRHA sets payment standards METRO-WIDE (one schedule for the whole Las
 // Vegas-Henderson-North Las Vegas MSA) at 110% of HUD's Fair Market Rent —
 // NOT Small Area FMR / zip-based (Clark County isn't on HUD's mandatory
@@ -36,12 +43,34 @@ export interface Section8Standard {
   label: string;
 }
 
+/** Clark County cities SNRHA's payment standard covers, beyond unincorporated
+ *  Clark County itself (state === "NV" with no city, or an unrecognized
+ *  city, still counts — the metro is most of the county). */
+const LAS_VEGAS_METRO_CITIES = new Set(["las vegas", "north las vegas", "henderson"]);
+
+/** Is this property inside the SNRHA (Las Vegas metro) service area? NV
+ *  state is required; an unknown/omitted city is accepted (most of Clark
+ *  County), but a named city outside the metro list is not. */
+function isLasVegasMetro(state?: string, city?: string): boolean {
+  if ((state ?? "").trim().toUpperCase() !== "NV") return false;
+  const normalizedCity = (city ?? "").trim().toLowerCase();
+  if (normalizedCity === "") return true;
+  return LAS_VEGAS_METRO_CITIES.has(normalizedCity);
+}
+
 /**
  * SNRHA Housing Choice Voucher payment standard for a given bedroom count.
- * Metro-wide (Clark County NV) — no zip needed. Null beyond 4BR: HUD/SNRHA
- * publish 0-4BR FMRs; larger units need a direct SNRHA quote.
+ * Metro-wide (Clark County NV) — no zip needed. Returns null for anything
+ * outside the Las Vegas metro (see isLasVegasMetro) — this dataset does not
+ * generalize to other markets — and null beyond 4BR: HUD/SNRHA publish 0-4BR
+ * FMRs; larger units need a direct SNRHA quote.
  */
-export function section8Standard(bedrooms: number): Section8Standard | null {
+export function section8Standard(
+  bedrooms: number,
+  state?: string,
+  city?: string,
+): Section8Standard | null {
+  if (!isLasVegasMetro(state, city)) return null;
   if (!Number.isFinite(bedrooms)) return null;
   const index = Math.round(bedrooms);
   if (index < 0 || index > 4) return null;

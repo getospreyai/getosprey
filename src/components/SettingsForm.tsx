@@ -61,6 +61,7 @@ const labelClass = "text-sm font-medium text-white";
 const helpClass = "mt-1 text-xs text-white/50";
 
 export default function SettingsForm({ profile }: { profile: InvestorProfile }) {
+  const [statesText, setStatesText] = useState((profile.buyBox.states ?? []).join(", "));
   const [citiesText, setCitiesText] = useState((profile.buyBox.cities ?? []).join(", "));
   const [minPrice, setMinPrice] = useState(
     profile.buyBox.minPrice != null ? String(profile.buyBox.minPrice) : ""
@@ -148,8 +149,22 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
       return;
     }
 
+    const states = statesText
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+    if (states.some((s) => !/^[A-Z]{2}$/.test(s))) {
+      setStatus("error");
+      setErrorMsg("Use two-letter state codes, e.g. NV, AZ.");
+      return;
+    }
+
     const payload = {
       buyBox: {
+        // Omit states when blank so the merge preserves the stored market
+        // (never-clobber) — a nationwide profile always needs at least one
+        // state to be scanned, so clearing the field must not wipe it.
+        ...(states.length > 0 ? { states } : {}),
         cities: citiesText
           .split(",")
           .map((c) => c.trim())
@@ -202,12 +217,25 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
 
         <div className="mt-4 flex flex-col gap-3">
           <div>
+            <label className="mb-1 block text-xs text-white/50">States</label>
+            <input
+              type="text"
+              value={statesText}
+              onChange={(e) => setStatesText(e.target.value.toUpperCase())}
+              placeholder="NV, AZ, TX"
+              className={fieldClass}
+            />
+            <p className={helpClass}>
+              Two-letter codes, comma-separated. Leave blank to keep your current market.
+            </p>
+          </div>
+          <div>
             <label className="mb-1 block text-xs text-white/50">Cities</label>
             <input
               type="text"
               value={citiesText}
               onChange={(e) => setCitiesText(e.target.value)}
-              placeholder="Las Vegas, Henderson, Reno"
+              placeholder="Phoenix, Austin, Charlotte"
               className={fieldClass}
             />
             <p className={helpClass}>Comma-separated. Leave blank to match the whole state.</p>

@@ -18,7 +18,7 @@ function defaultProfile(userId: string, name: string) {
     name,
     onboarded: false,
     buyBox: {
-      states: ["NV"],
+      states: [],
       cities: [],
       propertyTypes: [],
     },
