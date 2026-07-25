@@ -21,7 +21,7 @@ export default function PricingPage() {
 
       {/* header */}
       <section className="relative z-10 px-6 pb-8 pt-8 sm:px-10 lg:pt-14">
-        <div className="mx-auto max-w-3xl text-center">
+        <div className="reveal mx-auto max-w-3xl text-center">
           <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-xs text-violet-100 backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />
             Coming soon · Founding pricing
@@ -45,13 +45,13 @@ export default function PricingPage() {
       </section>
 
       {/* plans */}
-      <section className="relative z-10 px-6 pb-8 pt-4 sm:px-10">
+      <section className="reveal reveal-delay-1 relative z-10 px-6 pb-8 pt-4 sm:px-10">
         <PricingPlans />
       </section>
 
       {/* reassurance */}
       <section className="relative z-10 px-6 py-10 sm:px-10">
-        <div className="mx-auto flex max-w-md flex-col items-center gap-1.5 text-center text-xs text-white/45">
+        <div className="reveal mx-auto flex max-w-md flex-col items-center gap-1.5 text-center text-xs text-white/45">
           <p>Free to join the waitlist — no card, no commitment.</p>
           <p>You&apos;ll always hear from us before anything is billed.</p>
           <p>Founding rates are provisional and may change before launch.</p>
@@ -60,7 +60,7 @@ export default function PricingPage() {
 
       {/* CTA */}
       <section className="relative z-10 px-6 pb-16 pt-4 text-center sm:px-10">
-        <div className="mx-auto max-w-xl">
+        <div className="reveal mx-auto max-w-xl">
           <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
             Get in before pricing goes{" "}
             <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
@@ -74,13 +74,13 @@ export default function PricingPage() {
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/#join"
-              className="rounded-xl bg-indigo-500 px-8 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:bg-indigo-400"
+              className="glow-cta rounded-xl bg-indigo-500 px-8 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] hover:bg-indigo-400"
             >
               Join the waitlist
             </Link>
             <Link
               href="/try"
-              className="rounded-xl border border-white/15 bg-white/[0.04] px-8 py-3 font-medium text-white/80 transition hover:bg-white/[0.08]"
+              className="glow-cta glow-cta-ghost rounded-xl border border-white/15 bg-white/[0.04] px-8 py-3 font-medium text-white/80 hover:bg-white/[0.08]"
             >
               Try a live verdict first
             </Link>

@@ -37,7 +37,7 @@ export default function TryPage() {
       <MarketingNav active="try" />
 
       <section className="relative z-10 px-6 pb-20 pt-8 sm:px-10 lg:pt-14">
-        <div className="mx-auto max-w-3xl text-center">
+        <div className="reveal mx-auto max-w-3xl text-center">
           <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
             See what Osprey{" "}
             <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
@@ -52,7 +52,7 @@ export default function TryPage() {
           </p>
         </div>
 
-        <div className="mx-auto mt-10 max-w-3xl">
+        <div className="reveal reveal-delay-1 mx-auto mt-10 max-w-3xl">
           <TryDemo deals={DEMO_DEALS} initial={{ dealId: deal.id, underwriting, projection, maxOffer }} />
           <p className="mt-4 text-center text-xs text-white/40">
             Illustrative properties, real math — every figure is live output from Osprey&apos;s underwriting
@@ -61,21 +61,21 @@ export default function TryPage() {
         </div>
 
         {/* address teaser — copy only, no input: not a live lookup today */}
-        <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-white/10 bg-white/[0.05] p-6 text-center backdrop-blur-md">
+        <div className="reveal glow-card mx-auto mt-10 max-w-3xl rounded-2xl border border-white/10 bg-white/[0.05] p-6 text-center backdrop-blur-md">
           <p className="text-sm text-white/70">
             Want a verdict on a specific address? Live address lookups are coming soon — join free and yours
             is first.
           </p>
           <Link
             href="/#join"
-            className="mt-4 inline-block rounded-full border border-violet-400/40 bg-violet-500/10 px-5 py-2 text-sm font-medium text-violet-200 transition hover:bg-violet-500/20"
+            className="glow-cta glow-cta-ghost mt-4 inline-block rounded-full border border-violet-400/40 bg-violet-500/10 px-5 py-2 text-sm font-medium text-violet-200 hover:bg-violet-500/20"
           >
             Join the waitlist
           </Link>
         </div>
 
         {/* primary CTA */}
-        <div className="mx-auto mt-16 max-w-2xl text-center">
+        <div className="reveal mx-auto mt-16 max-w-2xl text-center">
           <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
             Osprey runs this on every new listing in your market — and messages you only when one clears
             your bar.
@@ -83,13 +83,13 @@ export default function TryPage() {
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/#join"
-              className="rounded-xl bg-indigo-500 px-8 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:bg-indigo-400"
+              className="glow-cta rounded-xl bg-indigo-500 px-8 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] hover:bg-indigo-400"
             >
               Join the waitlist
             </Link>
             <Link
               href="/signup"
-              className="rounded-xl border border-white/15 bg-white/[0.04] px-8 py-3 font-medium text-white/80 transition hover:bg-white/[0.08]"
+              className="glow-cta glow-cta-ghost rounded-xl border border-white/15 bg-white/[0.04] px-8 py-3 font-medium text-white/80 hover:bg-white/[0.08]"
             >
               Create an account
             </Link>

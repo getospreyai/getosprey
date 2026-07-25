@@ -154,8 +154,8 @@ export default function PricingPlans() {
               key={tier.name}
               className={
                 tier.highlight
-                  ? "group relative flex h-full flex-col rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-7 shadow-[0_0_50px_-12px_rgba(139,124,255,0.4)] backdrop-blur-md transition duration-300 ease-out hover:border-violet-400/60 hover:bg-violet-500/[0.12] hover:shadow-[0_24px_70px_-20px_rgba(139,124,255,0.75)] motion-safe:hover:-translate-y-1.5"
-                  : "group relative flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.05] p-7 backdrop-blur-md transition duration-300 ease-out hover:border-white/25 hover:bg-white/[0.07] hover:shadow-[0_24px_60px_-24px_rgba(139,124,255,0.5)] motion-safe:hover:-translate-y-1.5"
+                  ? "glow-card glow-card-featured relative flex h-full flex-col rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-7 shadow-[0_0_50px_-12px_rgba(139,124,255,0.4)] backdrop-blur-md"
+                  : "glow-card relative flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.05] p-7 backdrop-blur-md"
               }
             >
               {tier.badge && (
@@ -202,8 +202,8 @@ export default function PricingPlans() {
                 href={tier.cta.href}
                 className={
                   tier.highlight
-                    ? "mt-6 inline-flex items-center justify-center rounded-xl bg-indigo-500 px-5 py-3 text-sm font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:bg-indigo-400"
-                    : "mt-6 inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/80 transition hover:bg-white/[0.08]"
+                    ? "glow-cta mt-6 inline-flex items-center justify-center rounded-xl bg-indigo-500 px-5 py-3 text-sm font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] hover:bg-indigo-400"
+                    : "glow-cta glow-cta-ghost mt-6 inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/80 hover:bg-white/[0.08]"
                 }
               >
                 {tier.cta.label}

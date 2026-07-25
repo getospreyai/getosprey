@@ -24,3 +24,191 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ===========================================================================
+   Osprey motion system
+   Animated aurora, soft glow on cards + CTAs, hover micro-interactions, and
+   scroll reveal. Calm by design: slow, low-amplitude, GPU transforms only
+   (transform/opacity — never layout properties). Everything degrades to a
+   still, fully-legible page under `prefers-reduced-motion: reduce`.
+
+   These rules are intentionally unlayered so their :hover states win over
+   Tailwind utility classes on the same element without needing !important.
+=========================================================================== */
+
+/* --- Aurora drift ------------------------------------------------------- */
+@keyframes osprey-aurora-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(7%, -5%, 0) scale(1.18);
+  }
+}
+@keyframes osprey-aurora-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-7%, 6%, 0) scale(1.15);
+  }
+}
+/* Slow-rotating conic sheen — reads as flowing color. Centered by a static
+   wrapper so the animation is free to own `transform`. */
+@keyframes osprey-aurora-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Centered glow: centering is done with auto margins (not transform) so the
+   animation is free to own `transform` and reduced-motion leaves it centered. */
+@keyframes osprey-aurora-glow {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.12) translateY(-4%);
+    opacity: 1;
+  }
+}
+
+.osprey-aurora-a {
+  animation: osprey-aurora-a 26s ease-in-out infinite;
+  will-change: transform;
+}
+.osprey-aurora-b {
+  animation: osprey-aurora-b 32s ease-in-out infinite;
+  will-change: transform;
+}
+.osprey-aurora-glow {
+  animation: osprey-aurora-glow 22s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.osprey-aurora-rotate {
+  animation: osprey-aurora-rotate 120s linear infinite;
+  will-change: transform;
+}
+
+/* --- Scroll reveal ------------------------------------------------------ */
+/* Hidden until the observer adds `.is-visible`. A <noscript> override in the
+   layout keeps everything visible when JS is unavailable. */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+.reveal-delay-1 {
+  transition-delay: 0.09s;
+}
+.reveal-delay-2 {
+  transition-delay: 0.18s;
+}
+
+/* --- Glow card ---------------------------------------------------------- */
+/* Additive: pair with existing Tailwind card classes. Lifts and blooms a
+   soft violet glow on hover. */
+.glow-card {
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease,
+    border-color 0.35s ease,
+    background-color 0.35s ease;
+}
+.glow-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 24px 60px -24px rgba(139, 124, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+/* Featured cards carry a resting glow too; hover just intensifies it. */
+.glow-card-featured:hover {
+  box-shadow: 0 26px 70px -20px rgba(139, 124, 255, 0.75);
+  border-color: rgba(167, 139, 250, 0.6);
+}
+
+/* --- Glow CTA ----------------------------------------------------------- */
+/* Deepens its glow and sweeps a soft shine across on hover. */
+.glow-cta {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease,
+    background-color 0.3s ease;
+}
+.glow-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 40px -6px rgba(79, 70, 229, 0.6);
+}
+.glow-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 75%
+  );
+  transform: translateX(-130%);
+  transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.glow-cta:hover::after {
+  transform: translateX(130%);
+}
+/* Secondary (outline) CTA: quieter shine, subtle border/bg lift. */
+.glow-cta-ghost:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px -18px rgba(139, 124, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.glow-cta-ghost::after {
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.14) 50%,
+    transparent 70%
+  );
+}
+
+/* --- Reduced motion ----------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .osprey-aurora-a,
+  .osprey-aurora-b,
+  .osprey-aurora-glow,
+  .osprey-aurora-rotate {
+    animation: none !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .glow-card,
+  .glow-cta,
+  .glow-cta-ghost {
+    transition:
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+  .glow-card:hover,
+  .glow-cta:hover,
+  .glow-cta-ghost:hover {
+    transform: none;
+  }
+  .glow-cta::after {
+    display: none;
+  }
+}

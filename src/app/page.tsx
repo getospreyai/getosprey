@@ -154,7 +154,7 @@ export default function Home() {
       {/* hero */}
       <section className="relative z-10 px-6 pb-16 pt-8 sm:px-10 lg:pt-14">
         <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
-          <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
+          <div className="reveal flex flex-col items-center text-center lg:items-start lg:text-left">
             <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-xs text-violet-100 backdrop-blur-md">
               <OspreyIcon className="h-3.5 w-3.5" />
               Nationwide coverage · Single-family to fourplex
@@ -190,14 +190,14 @@ export default function Home() {
               <WaitlistForm />
               <Link
                 href="/try"
-                className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition hover:bg-white/[0.08]"
+                className="glow-cta glow-cta-ghost mt-4 inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:bg-white/[0.08]"
               >
                 Try a live verdict — no signup <span aria-hidden>→</span>
               </Link>
             </div>
           </div>
 
-          <div>
+          <div className="reveal reveal-delay-1">
             <PhoneDemo />
             <p className="mt-4 text-center text-xs text-white/40">
               Fictional property, real math — every figure is live output from
@@ -209,7 +209,7 @@ export default function Home() {
 
       {/* how it works */}
       <section className="relative z-10 px-6 py-16 sm:px-10">
-        <div className="mx-auto max-w-6xl">
+        <div className="reveal mx-auto max-w-6xl">
           <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
             How Osprey{" "}
             <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
@@ -220,7 +220,7 @@ export default function Home() {
             {steps.map((s, i) => (
               <div
                 key={s.title}
-                className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md"
+                className="glow-card rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md"
               >
                 <span className="text-sm font-medium text-violet-300">
                   0{i + 1}
@@ -242,7 +242,7 @@ export default function Home() {
 
       {/* feature showcase */}
       <section className="relative z-10 px-6 py-16 sm:px-10">
-        <div className="mx-auto max-w-6xl">
+        <div className="reveal mx-auto max-w-6xl">
           <h2 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
             Not just the verdict. The{" "}
             <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
@@ -256,7 +256,7 @@ export default function Home() {
                 // 9 cards = a clean 3x3 at lg. At the 2-col (sm) breakpoint that
                 // would orphan the last card, so it spans both columns there —
                 // a deliberate full-width closer instead of a lone half-row.
-                className={`rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md${
+                className={`glow-card rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md${
                   i === features.length - 1 ? " sm:col-span-2 lg:col-span-1" : ""
                 }`}
               >
@@ -270,7 +270,7 @@ export default function Home() {
 
       {/* comparison */}
       <section className="relative z-10 px-6 py-16 sm:px-10">
-        <div className="mx-auto max-w-4xl">
+        <div className="reveal mx-auto max-w-4xl">
           <h2 className="text-balance text-center text-3xl font-semibold tracking-tight sm:text-4xl">
             Alerts tell you something was listed.{" "}
             <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
@@ -278,7 +278,7 @@ export default function Home() {
             </span>
           </h2>
           <div className="mt-10 grid gap-5 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+            <div className="glow-card rounded-2xl border border-white/10 bg-white/[0.03] p-6">
               <h3 className="text-sm font-medium uppercase tracking-wide text-white/40">
                 Portal alerts
               </h3>
@@ -293,7 +293,7 @@ export default function Home() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-6 shadow-[0_0_45px_rgba(139,124,255,0.15)] backdrop-blur-md">
+            <div className="glow-card glow-card-featured rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-6 shadow-[0_0_50px_-12px_rgba(139,124,255,0.4)] backdrop-blur-md">
               <h3 className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide text-violet-200">
                 <OspreyIcon className="h-4 w-4" /> Osprey
               </h3>
@@ -326,8 +326,8 @@ export default function Home() {
       </section>
 
       {/* agent / brokerage */}
-      <section className="relative z-10 px-6 py-16 sm:px-10">
-        <div className="mx-auto max-w-4xl rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-8 shadow-[0_0_45px_rgba(139,124,255,0.15)] backdrop-blur-md sm:p-10">
+      <section className="reveal relative z-10 px-6 py-16 sm:px-10">
+        <div className="glow-card glow-card-featured mx-auto max-w-4xl rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-8 shadow-[0_0_50px_-12px_rgba(139,124,255,0.4)] backdrop-blur-md sm:p-10">
           <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
             Built for the agent who{" "}
             <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
@@ -352,7 +352,7 @@ export default function Home() {
 
       {/* final CTA */}
       <section className="relative z-10 px-6 py-16 text-center sm:px-10">
-        <div className="mx-auto max-w-xl">
+        <div className="reveal mx-auto max-w-xl">
           <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             Let Osprey{" "}
             <span className="font-[family-name:var(--font-instrument-serif)] font-normal italic text-violet-200">
@@ -365,7 +365,7 @@ export default function Home() {
           </p>
           <a
             href="#join"
-            className="mt-7 inline-block rounded-xl bg-indigo-500 px-8 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:bg-indigo-400"
+            className="glow-cta mt-7 inline-block rounded-xl bg-indigo-500 px-8 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] hover:bg-indigo-400"
           >
             Join the waitlist
           </a>

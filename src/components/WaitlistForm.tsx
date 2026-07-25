@@ -85,7 +85,7 @@ export default function WaitlistForm() {
         <button
           type="submit"
           disabled={status === "submitting"}
-          className="mt-1 w-full rounded-xl bg-indigo-500 px-5 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:bg-indigo-400 disabled:opacity-60"
+          className="glow-cta mt-1 w-full rounded-xl bg-indigo-500 px-5 py-3 font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] hover:bg-indigo-400 disabled:opacity-60"
         >
           {status === "submitting" ? "Joining..." : "Join now"}
         </button>
