@@ -21,10 +21,10 @@ function FeatherIcon({ className }: { className?: string }) {
   );
 }
 
-/** Shared top nav for public marketing pages (/, /try). */
-export default function MarketingNav({ active }: { active?: "try" }) {
-  const tryLinkClass =
-    active === "try"
+/** Shared top nav for public marketing pages (/, /try, /pricing). */
+export default function MarketingNav({ active }: { active?: "try" | "pricing" }) {
+  const linkClass = (isActive: boolean) =>
+    isActive
       ? "text-sm text-white"
       : "text-sm text-white/60 transition hover:text-white";
 
@@ -37,8 +37,11 @@ export default function MarketingNav({ active }: { active?: "try" }) {
         <span className="text-sm font-semibold tracking-tight">Osprey</span>
       </Link>
       <div className="flex items-center gap-5">
-        <Link href="/try" className={tryLinkClass}>
+        <Link href="/try" className={linkClass(active === "try")}>
           Try it
+        </Link>
+        <Link href="/pricing" className={linkClass(active === "pricing")}>
+          Pricing
         </Link>
         <Link
           href="/login"

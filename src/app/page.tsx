@@ -178,8 +178,14 @@ export default function Home() {
 
             <div id="join" className="mt-8 w-full max-w-md scroll-mt-24">
               <p className="mb-3 text-sm text-white/50">
-                Join the waitlist — founding members get first access at launch
-                pricing.
+                Join the waitlist — founding members get first access at{" "}
+                <Link
+                  href="/pricing"
+                  className="text-violet-200 underline decoration-violet-300/40 underline-offset-4 transition hover:text-violet-100"
+                >
+                  founding pricing
+                </Link>
+                .
               </p>
               <WaitlistForm />
               <Link
