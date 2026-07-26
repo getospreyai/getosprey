@@ -361,6 +361,36 @@ never heard of us.** Strictly better on privacy *and* smaller to build. Do not
 
 ---
 
+## 9b. Migration rehearsal procedure (ship gate #4)
+
+`ensureSchema()` is all `CREATE TABLE IF NOT EXISTS` plus, since 2026-07-26, a
+few `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. Both are silent no-ops once
+they have run — which is what makes a migration that *didn't* run
+indistinguishable from one that did. `scripts/verify-schema.mjs` is the check.
+
+**Status:** the ALTER path is **proven in production** (2026-07-26). The
+scan-coverage columns were verified absent, `ensureSchema()` was triggered via a
+read-only `/r/<invalid-token>` request, and all three columns came back present
+with correct types. That was the point of landing the first ALTERs on
+`scan_runs` — an append-only, no-user-data table — rather than on `users`.
+
+**Phase 0 rehearsal (required before the `users` migration touches prod):**
+
+1. Create a Neon branch of prod (Console → Branches → **Create branch**, from
+   `main`). Copy-on-write, so it is instant and carries real data.
+2. Put its connection string in `.env.local` as `NEON_BRANCH_URL` — never
+   anywhere else; `.env.local` is gitignored.
+3. Baseline the branch: `node scripts/verify-schema.mjs --branch`
+4. Point a local dev server at the branch and exercise an `ensureSchema()`
+   route so the new ALTERs run.
+5. Re-run the verifier. Confirm the new columns exist **and** that the row
+   counts for `users` / `investor_profiles` / `verdicts` are unchanged.
+6. Confirm login still works against the branch — `password_hash DROP NOT NULL`
+   is the one change that could plausibly break authentication.
+
+Add every new column to `EXPECTED` in `verify-schema.mjs` **in the same commit**
+as the migration. That is what makes it a check rather than a description.
+
 ## 10. Verification
 
 Production has live users — every schema change must be backward compatible, and
