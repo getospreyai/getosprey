@@ -67,6 +67,28 @@ export function deriveMarkets(profiles: { buyBox: BuyBox }[]): WatchTarget[] {
   return [...byKey.values()];
 }
 
+/**
+ * Split derived markets into the ones this run will scan and the ones the cap
+ * drops. Each market is a full paginated RentCast pull (~12-20 calls), so the
+ * cap is a real cost control — but a DROPPED market means every profile that
+ * only targets it is silently not scanned at all that run. Returning the
+ * dropped set (rather than slicing at the call site) is what lets the cron
+ * record them, so "my client never gets alerts" is diagnosable instead of
+ * invisible.
+ *
+ * A non-positive or non-finite `max` is treated as "no cap" — never as a
+ * silent slice that would drop everything or, via a negative index, drop from
+ * the end.
+ */
+export function capMarkets(
+  derived: WatchTarget[],
+  max: number,
+): { scanned: WatchTarget[]; dropped: WatchTarget[] } {
+  const uncapped = !Number.isFinite(max) || max <= 0;
+  const limit = uncapped ? derived.length : Math.floor(max);
+  return { scanned: derived.slice(0, limit), dropped: derived.slice(limit) };
+}
+
 /** Does this buy box include the given market? Mirrors matchesBuyBox's
  *  state/city rules (case-insensitive; an empty states/cities list on the
  *  box means "no restriction" on that dimension, i.e. a whole-state box

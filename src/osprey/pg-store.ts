@@ -73,6 +73,13 @@ export interface ScanRunStats {
   underwritten: number;
   texts: number;
   priceChanges: number;
+  /** Distinct markets the onboarded profiles asked for, before the cap. */
+  marketsRequested?: number;
+  /** Markets this run actually pulled. */
+  marketsScanned?: number;
+  /** Labels of markets the cap dropped — profiles targeting only these were
+   *  not scanned at all this run. Empty is the healthy state. */
+  marketsDropped?: string[];
 }
 
 /** scan_runs rows summed over a window — the Sunday digest's market-wide input. */
@@ -327,9 +334,12 @@ export class PgStore implements Store {
   async recordScanRun(stats: ScanRunStats): Promise<void> {
     const db = requireSql();
     await db`
-      INSERT INTO scan_runs (city, state, scanned, in_niche, matched, underwritten, texts, price_changes)
+      INSERT INTO scan_runs (city, state, scanned, in_niche, matched, underwritten, texts, price_changes,
+                             markets_requested, markets_scanned, markets_dropped)
       VALUES (${stats.city}, ${stats.state}, ${stats.scanned}, ${stats.inNiche}, ${stats.matched},
-              ${stats.underwritten}, ${stats.texts}, ${stats.priceChanges})
+              ${stats.underwritten}, ${stats.texts}, ${stats.priceChanges},
+              ${stats.marketsRequested ?? null}, ${stats.marketsScanned ?? null},
+              ${stats.marketsDropped ? JSON.stringify(stats.marketsDropped) : null}::jsonb)
     `;
   }
 
@@ -355,6 +365,23 @@ export class PgStore implements Store {
       priceChanges: row?.price_changes ?? 0,
       runCount: row?.run_count ?? 0,
     };
+  }
+
+  /**
+   * Distinct market labels the cap dropped in the window. Non-empty means some
+   * profiles targeting only those markets went unscanned — the answer to "why
+   * does this investor never get alerts?" Kept separate from
+   * loadScanRunTotalsSince so the Sunday digest's query is unchanged.
+   */
+  async loadDroppedMarketsSince(since: Date): Promise<string[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT DISTINCT d.label
+      FROM scan_runs s, LATERAL jsonb_array_elements_text(s.markets_dropped) AS d(label)
+      WHERE s.ran_at >= ${since.toISOString()}
+      ORDER BY d.label
+    `) as { label: string }[];
+    return rows.map((r) => r.label);
   }
 
   async loadSnapshot(listingId: string): Promise<ListingSnapshot | null> {

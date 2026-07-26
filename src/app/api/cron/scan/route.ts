@@ -24,6 +24,7 @@ import {
 } from "@/osprey/engine";
 import {
   buyBoxTargetsMarket,
+  capMarkets,
   deriveMarkets,
   fetchBatch,
   fetchRentFor,
@@ -86,18 +87,29 @@ export async function GET(req: NextRequest) {
     const envState = process.env.OSPREY_STATE;
     const maxMarkets = Number(process.env.OSPREY_MAX_MARKETS) || 5;
     let markets: WatchTarget[];
+    // Coverage, recorded on the scan_runs row below. A dropped market means
+    // every profile targeting only that market was not scanned at all this
+    // run; that used to be a console.warn and nothing else.
+    let marketsRequested: number;
+    let droppedMarkets: WatchTarget[] = [];
     if (envState) {
       markets = [{ city: process.env.OSPREY_CITY || undefined, state: envState }];
+      marketsRequested = 1;
     } else {
       const derived = deriveMarkets(profiles);
-      if (derived.length > maxMarkets) {
+      marketsRequested = derived.length;
+      const capped = capMarkets(derived, maxMarkets);
+      markets = capped.scanned;
+      droppedMarkets = capped.dropped;
+      if (droppedMarkets.length > 0) {
         console.warn(
           `Cron scan: ${derived.length} distinct markets from onboarded profiles, ` +
-            `capping to ${maxMarkets} (raise via OSPREY_MAX_MARKETS). Dropped: ` +
-            derived.slice(maxMarkets).map(marketLabel).join("; ")
+            `capping to ${maxMarkets} (raise via OSPREY_MAX_MARKETS). ` +
+            `${droppedMarkets.length} market(s) NOT scanned this run — profiles ` +
+            `targeting only these received nothing. Dropped: ` +
+            droppedMarkets.map(marketLabel).join("; ")
         );
       }
-      markets = derived.slice(0, maxMarkets);
     }
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -302,6 +314,9 @@ export async function GET(req: NextRequest) {
         markets.length === 1 ? markets[0].state : [...new Set(markets.map((m) => m.state))].join(","),
       ...summary,
       priceChanges,
+      marketsRequested,
+      marketsScanned: markets.length,
+      marketsDropped: droppedMarkets.map(marketLabel),
     });
 
     // Sunday digest: deterministic text, no LLM (digest.ts). Only attempted
@@ -351,6 +366,8 @@ export async function GET(req: NextRequest) {
       ...summary,
       priceChanges,
       digestsSent,
+      marketsRequested,
+      marketsDropped: droppedMarkets.map(marketLabel),
     });
   } catch (err) {
     console.error("Cron scan failed:", err);

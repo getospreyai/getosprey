@@ -12,7 +12,12 @@
 // dark — so it must break a test here first.
 
 import { describe, it, expect } from "vitest";
-import { buyBoxTargetsMarket, deriveMarkets, marketLabel } from "@/osprey/agent/watcher";
+import {
+  buyBoxTargetsMarket,
+  capMarkets,
+  deriveMarkets,
+  marketLabel,
+} from "@/osprey/agent/watcher";
 import type { BuyBox } from "@/osprey/agent/model";
 
 const box = (over: Partial<BuyBox> = {}): { buyBox: BuyBox } => ({
@@ -72,6 +77,56 @@ describe("deriveMarkets", () => {
       box({ states: ["NV"], cities: [city] }),
     );
     expect(deriveMarkets(clients)).toHaveLength(6);
+  });
+});
+
+describe("capMarkets — the silent-starvation guard", () => {
+  const m = (state: string): { state: string } => ({ state });
+  const five = [m("NV"), m("AZ"), m("TX"), m("CA"), m("UT")];
+
+  it("returns everything and drops nothing when under the cap", () => {
+    expect(capMarkets(five, 10)).toEqual({ scanned: five, dropped: [] });
+  });
+
+  it("returns everything when exactly at the cap", () => {
+    expect(capMarkets(five, 5)).toEqual({ scanned: five, dropped: [] });
+  });
+
+  it("reports what it dropped instead of discarding it silently", () => {
+    const { scanned, dropped } = capMarkets(five, 3);
+    expect(scanned.map(marketLabel)).toEqual(["NV", "AZ", "TX"]);
+    expect(dropped.map(marketLabel)).toEqual(["CA", "UT"]);
+  });
+
+  it("scanned + dropped always reconstructs the input", () => {
+    for (const max of [0, 1, 3, 5, 99]) {
+      const { scanned, dropped } = capMarkets(five, max);
+      expect([...scanned, ...dropped]).toEqual(five);
+    }
+  });
+
+  // A negative cap through Array.slice(0, -1) would silently drop from the END
+  // — scanning most markets while quietly starving the last. Non-positive and
+  // non-finite values mean "no cap", never a partial slice.
+  it("treats non-positive and non-finite caps as no cap", () => {
+    for (const max of [0, -1, -5, NaN, Infinity]) {
+      expect(capMarkets(five, max)).toEqual({ scanned: five, dropped: [] });
+    }
+  });
+
+  it("handles an empty market list", () => {
+    expect(capMarkets([], 5)).toEqual({ scanned: [], dropped: [] });
+  });
+
+  it("drops a client's market once the book outgrows the cap", () => {
+    // Six client metros against the default cap of 5: one client goes dark.
+    const clientMarkets = deriveMarkets(
+      ["Las Vegas", "Henderson", "Reno", "Sparks", "Mesquite", "Elko"].map((city) =>
+        box({ states: ["NV"], cities: [city] }),
+      ),
+    );
+    const { dropped } = capMarkets(clientMarkets, 5);
+    expect(dropped.map(marketLabel)).toEqual(["Elko, NV"]);
   });
 });
 

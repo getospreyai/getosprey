@@ -144,5 +144,21 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
 
+  // Scan coverage. The market cap (OSPREY_MAX_MARKETS) drops markets past the
+  // limit, and every profile that only targets a dropped market goes unscanned
+  // that run — previously visible only as a console.warn, i.e. effectively not
+  // at all. Recording it makes "why does this investor never get alerts?"
+  // answerable from the database.
+  //
+  // NOTE: these are the first ALTERs in ensureSchema (every prior statement is
+  // CREATE TABLE IF NOT EXISTS, which does NOT add columns to an existing
+  // table). Deliberately chosen to land on scan_runs first: it is an
+  // append-only stats table, tiny, holds no user data, and the columns are
+  // nullable — so this doubles as a low-risk production rehearsal of the ALTER
+  // path that the users-table migration will need later.
+  await sql`ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_requested INT`;
+  await sql`ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_scanned INT`;
+  await sql`ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_dropped JSONB`;
+
   schemaReady = true;
 }

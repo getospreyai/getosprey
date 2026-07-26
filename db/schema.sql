@@ -126,3 +126,12 @@ CREATE TABLE IF NOT EXISTS scan_runs (
   texts         INT NOT NULL DEFAULT 0,
   price_changes INT NOT NULL DEFAULT 0
 );
+
+-- Scan coverage (2026-07-26). The OSPREY_MAX_MARKETS cap drops markets past
+-- the limit; every profile that only targets a dropped market goes unscanned
+-- that run. Recorded so that is diagnosable from SQL instead of a console.warn.
+-- Separate ALTERs (not inlined above) because the CREATE TABLE IF NOT EXISTS
+-- will not add columns to an already-existing scan_runs.
+ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_requested INT;
+ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_scanned   INT;
+ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_dropped   JSONB;
