@@ -48,11 +48,11 @@ export default function PhoneDemo() {
   return (
     <div
       aria-label="Example Osprey Telegram conversation: Osprey sends a cash-flow verdict on a fourplex with Analyze, Pass, and Save buttons; the investor asks in plain English what 20% down would look like and how high they could offer, gets both answered inline, then passes with a reason and Osprey notes the preference."
-      className="mx-auto w-full max-w-[340px] rounded-[2.5rem] border border-white/15 bg-[#0d0a1f]/90 p-3 shadow-[0_25px_80px_rgba(99,88,238,0.25)] backdrop-blur-md"
+      className="mx-auto flex aspect-[10/21] w-full max-w-[390px] flex-col rounded-[2.5rem] border border-white/15 bg-[#0d0a1f]/90 p-3 shadow-[0_25px_80px_rgba(99,88,238,0.25)] backdrop-blur-md"
     >
-      <div className="rounded-[2rem] bg-[#07051a] px-4 pb-5 pt-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[2rem] bg-[#07051a] px-4 pb-5 pt-4">
         {/* thread header */}
-        <div className="mb-4 flex flex-col items-center gap-1 border-b border-white/10 pb-3">
+        <div className="mb-3 flex shrink-0 flex-col items-center gap-1 border-b border-white/10 pb-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-500/30 text-base">
             🦅
           </span>
@@ -68,7 +68,7 @@ export default function PhoneDemo() {
         </div>
 
         {/* thread */}
-        <div className="flex flex-col gap-2.5">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
           <OspreyBubble>
             🦅 New match: Fourplex · 1400 Kestrel Hollow Ct — $415,000
             <br />
@@ -106,6 +106,28 @@ export default function PhoneDemo() {
             Passed. Noted that you like your doors close together —
             I&apos;ll weigh that next time.
           </OspreyBubble>
+        </div>
+
+        {/* composer bar — decorative; fills the screen like a real chat so the
+            frame reads as a phone rather than a tall empty card */}
+        <div
+          aria-hidden
+          className="mt-3 flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5"
+        >
+          <span className="text-[13px] text-white/35">Message Osprey…</span>
+          <span className="ml-auto flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </span>
         </div>
       </div>
     </div>
