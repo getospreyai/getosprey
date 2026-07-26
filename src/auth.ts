@@ -2,6 +2,13 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { sql, ensureSchema, hasDb } from "@/lib/db";
+import { canAuthenticate } from "@/lib/auth-guard";
+
+/** A real bcrypt digest of a value nothing can supply, compared against when
+ *  no login is possible so the failure path costs roughly what a real one
+ *  does. Never matches: bcrypt digests are salted, and this is not the hash of
+ *  any password a user could enter. */
+const DUMMY_HASH = "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -27,17 +34,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         await ensureSchema();
         const rows = await sql`
-          SELECT id, email, password_hash, name FROM users WHERE email = ${email}
+          SELECT id, email, password_hash, name, role, status FROM users WHERE email = ${email}
         `;
         const user = rows[0] as
-          | { id: string; email: string; password_hash: string; name: string }
+          | {
+              id: string;
+              email: string;
+              password_hash: string | null;
+              name: string;
+              role: string | null;
+              status: string | null;
+            }
           | undefined;
-        if (!user) return null;
 
-        const valid = await bcrypt.compare(password, user.password_hash);
+        // Managed/invited clients (null password_hash) must never authenticate.
+        // This MUST come before bcrypt.compare: bcryptjs throws on a non-string
+        // digest rather than returning false. See src/lib/auth-guard.ts.
+        if (!user || !canAuthenticate(user)) {
+          // Burn a comparison anyway so "no such user" and "wrong password"
+          // take similar time. Returning early on a missing user is a classic
+          // account-enumeration oracle, and adding the guard above would have
+          // widened it to also reveal which accounts are agent-managed.
+          await bcrypt.compare(password, DUMMY_HASH).catch(() => false);
+          return null;
+        }
+
+        const valid = await bcrypt.compare(password, user.password_hash as string);
         if (!valid) return null;
 
-        return { id: user.id, email: user.email, name: user.name };
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role ?? "investor",
+        };
       },
     }),
   ],
@@ -45,12 +75,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.role = user.role ?? "investor";
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && typeof token.id === "string") {
         session.user.id = token.id;
+        // NAVIGATION ONLY. This is a snapshot taken at sign-in and goes stale
+        // the moment a role changes — a user promoted to agent keeps an
+        // 'investor' token until they re-authenticate, and a demoted one keeps
+        // 'agent'. Never make an authorization decision from it; resolveScope()
+        // re-reads the database on every cross-user access. See
+        // docs/AGENT-ACCOUNTS-PLAN.md §3a T5.
+        session.user.role = typeof token.role === "string" ? token.role : "investor";
       }
       return session;
     },

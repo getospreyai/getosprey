@@ -30,12 +30,23 @@ const EXPECTED = [
   ["scan_runs", "markets_requested"],
   ["scan_runs", "markets_scanned"],
   ["scan_runs", "markets_dropped"],
+  // Wave: agent accounts phase 0 (2026-07-26).
+  ["users", "role"],
+  ["users", "status"],
+  ["agent_clients", "agent_user_id"],
+  ["agent_clients", "client_user_id"],
+  ["agent_clients", "archived_at"],
   // Pre-existing core columns, as a sanity check that we are pointed at a real
   // Osprey database and not an empty one.
   ["users", "email"],
   ["investor_profiles", "telegram_chat_id"],
   ["verdicts", "listing_id"],
 ];
+
+/** Columns that MUST be nullable for the current code to work. A migration
+ *  that silently failed to drop a NOT NULL is invisible until an insert
+ *  explodes in production. */
+const EXPECTED_NULLABLE = [["users", "password_hash"]];
 
 /** Tables whose row counts are worth seeing before/after a migration. */
 const COUNT_TABLES = ["users", "investor_profiles", "verdicts", "scan_runs"];
@@ -75,13 +86,16 @@ console.log(`verify-schema: ${host}\n`);
 const sql = neon(connectionString);
 
 const rows = await sql`
-  SELECT table_name, column_name, data_type
+  SELECT table_name, column_name, data_type, is_nullable
   FROM information_schema.columns
   WHERE table_schema = 'public'
 `;
 
 const present = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
 const typeOf = new Map(rows.map((r) => [`${r.table_name}.${r.column_name}`, r.data_type]));
+const nullableOf = new Map(
+  rows.map((r) => [`${r.table_name}.${r.column_name}`, r.is_nullable === "YES"]),
+);
 
 let missing = 0;
 console.log("Expected columns:");
@@ -90,6 +104,15 @@ for (const [table, column] of EXPECTED) {
   const ok = present.has(key);
   if (!ok) missing++;
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}${ok ? `  (${typeOf.get(key)})` : ""}`);
+}
+
+console.log("\nExpected nullable:");
+for (const [table, column] of EXPECTED_NULLABLE) {
+  const key = `${table}.${column}`;
+  const ok = nullableOf.get(key) === true;
+  if (!ok) missing++;
+  const detail = present.has(key) ? (ok ? "nullable" : "STILL NOT NULL") : "column absent";
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}  (${detail})`);
 }
 
 console.log("\nRow counts:");

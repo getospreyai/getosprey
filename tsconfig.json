@@ -6,6 +6,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // scripts/rehearse-migration.mts runs under `node --experimental-strip-types`,
+    // which requires the explicit .ts extension on its import. Permitted only
+    // because noEmit is set; it allows such imports, it does not require them.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

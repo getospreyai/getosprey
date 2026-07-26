@@ -160,5 +160,41 @@ export async function ensureSchema(): Promise<void> {
   await sql`ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_scanned INT`;
   await sql`ALTER TABLE scan_runs ADD COLUMN IF NOT EXISTS markets_dropped JSONB`;
 
+  // -------------------------------------------------------------------------
+  // Agent accounts, phase 0 (2026-07-26). See docs/AGENT-ACCOUNTS-PLAN.md.
+  //
+  // Existing rows are unaffected: role defaults to 'investor' and status to
+  // 'active', which is exactly what every current user is.
+  // -------------------------------------------------------------------------
+
+  // 'investor' | 'agent' | 'brokerage_admin'
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'investor'`;
+  // 'active' | 'managed' | 'invited'. A managed/invited client is a real user
+  // row the agent manages; it has no password and MUST NOT be able to log in
+  // (enforced in src/auth.ts authorize(), not by this column).
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`;
+  // Managed clients have no password. Postgres treats dropping a NOT NULL that
+  // isn't there as a no-op, so this stays idempotent.
+  await sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`;
+
+  // The agent -> client roster. resolveScope() reads this on every
+  // cross-user access, so an archived row immediately revokes the agent.
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent_clients (
+      agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      client_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      label          TEXT,
+      alerts_live    BOOLEAN NOT NULL DEFAULT false,
+      created_at     TIMESTAMPTZ DEFAULT now(),
+      archived_at    TIMESTAMPTZ,
+      PRIMARY KEY (agent_user_id, client_user_id)
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS agent_clients_client_idx
+      ON agent_clients (client_user_id)
+  `;
+
   schemaReady = true;
 }
