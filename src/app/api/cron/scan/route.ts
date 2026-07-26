@@ -32,6 +32,7 @@ import {
 } from "@/osprey/agent/watcher";
 import { runScan, type ScanSummary, type VerdictRecord } from "@/osprey/agent/loop";
 import { matchesBuyBox } from "@/osprey/agent/matcher";
+import { scannableProfiles } from "@/osprey/agent/scannable";
 import { TelegramClient } from "@/osprey/agent/telegram";
 import { buildWeeklyDigest } from "@/osprey/agent/digest";
 
@@ -69,16 +70,11 @@ export async function GET(req: NextRequest) {
     const rentcast = new RentCastClient({ apiKey: rentcastKey });
 
     const allProfiles = await store.loadAllProfiles();
-    // Skip half-configured profiles: onboarded === false is explicitly mid-wizard
-    // (undefined covers legacy/CLI profiles predating onboarding, which are
-    // considered onboarded); an empty buy box or financing list has nothing
-    // to underwrite against.
-    const profiles = allProfiles.filter(
-      (p) =>
-        p.onboarded !== false &&
-        p.financingProfiles.length > 0 &&
-        p.buyBox.propertyTypes.length > 0
-    );
+    // Skip half-configured profiles. The predicate lives in scannable.ts so the
+    // UI can show the SAME reason a profile is being skipped — a profile that
+    // silently never scans is otherwise indistinguishable from one that scans
+    // and finds nothing.
+    const profiles = scannableProfiles(allProfiles);
     const profileById = new Map(profiles.map((p) => [p.id, p]));
 
     // Nationwide: scan every distinct market onboarded profiles actually
