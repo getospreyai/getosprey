@@ -120,15 +120,15 @@ export default async function ClientsPage() {
   }
 
   const store = new PgStore();
-  // Clients who left in the last 30 days, and why. Without this a client who
-  // disconnects — by choice from Settings, or automatically after moving their
-  // buy box outside the farm — simply vanishes from the roster, and the agent
-  // has no way to find out what happened.
-  const departedSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  // Clients who left recently, and why. Without this a client who disconnects
+  // — by choice from Settings, or automatically after moving their buy box
+  // outside the farm — simply vanishes from the roster, and the agent has no
+  // way to find out what happened.
+  const DEPARTED_WINDOW_DAYS = 30;
   const [clients, rawFarm, departed] = await Promise.all([
     store.listAgentClients(scoped.userId),
     store.loadFarmMarkets(scoped.userId),
-    store.listRecentlyDisconnectedClients(scoped.userId, departedSince),
+    store.listRecentlyDisconnectedClients(scoped.userId, DEPARTED_WINDOW_DAYS),
   ]);
   const farm = parseFarmMarkets(rawFarm);
   const latest = await store.loadLatestVerdictPerUser(clients.map((c) => c.clientUserId));

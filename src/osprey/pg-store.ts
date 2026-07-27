@@ -803,12 +803,18 @@ export class PgStore implements Store {
    *
    * The reason comes from the append-only consent ledger rather than from a
    * column on agent_clients, so it says what was actually recorded at the time
-   * rather than a status someone could later overwrite. DISTINCT ON takes the
+   * rather than a status someone could later overwrite. The LATERAL takes the
    * newest withdrawal per client, since the ledger accumulates.
+   *
+   * The window is computed in SQL from now() rather than passed in as a Date.
+   * Every other timestamp in this table comes from the database clock, so a
+   * cutoff computed from the web server's clock could disagree with the
+   * archived_at values it is being compared against — and computing it in a
+   * server component is a render-purity violation besides.
    */
   async listRecentlyDisconnectedClients(
     agentUserId: string,
-    since: Date,
+    withinDays: number,
   ): Promise<
     { clientUserId: string; name: string; archivedAt: string; reason: string | null }[]
   > {
@@ -828,7 +834,7 @@ export class PgStore implements Store {
       ) w ON true
       WHERE ac.agent_user_id = ${agentUserId}
         AND ac.archived_at IS NOT NULL
-        AND ac.archived_at >= ${since.toISOString()}
+        AND ac.archived_at >= now() - make_interval(days => ${withinDays})
       ORDER BY ac.archived_at DESC
     `) as {
       client_user_id: string;
