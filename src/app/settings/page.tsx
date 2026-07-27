@@ -4,6 +4,9 @@ import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import TelegramConnectCard from "@/components/TelegramConnectCard";
 import SettingsForm from "@/components/SettingsForm";
+import AgentAccessCard from "@/components/AgentAccessCard";
+import { agentAccountsEnabled } from "@/lib/features";
+import { PgStore } from "@/osprey/pg-store";
 
 export default async function SettingsPage() {
   const scoped = await resolveRequestScope();
@@ -20,6 +23,18 @@ export default async function SettingsPage() {
   // The Telegram deep link binds a chat to the profile being viewed, so it
   // carries the SUBJECT's id, not the viewer's.
   const subjectId = scoped.ok ? scoped.scope.subjectId : "";
+
+  // Who, if anyone, can see this account besides its owner. Read for the
+  // SUBJECT, so an agent viewing a client sees the client's agent relationship
+  // rather than their own — though today Settings is always self-scoped.
+  //
+  // This is looked up on every Settings load rather than cached in the
+  // session: the whole point of the card is to answer "who can see my data
+  // right now", and a stale answer to that question is worse than no answer.
+  const activeAgent =
+    scoped.ok && agentAccountsEnabled()
+      ? await new PgStore().loadActiveAgentForClient(subjectId)
+      : null;
 
   if (profile && profile.onboarded === false) {
     redirect("/onboarding");
@@ -58,6 +73,14 @@ export default async function SettingsPage() {
         ) : (
           <>
             <SettingsForm profile={profile} />
+            {/* Above Telegram: "who can see this" outranks "where do alerts
+                go" when a client is scanning their own settings page. */}
+            {activeAgent && (
+              <AgentAccessCard
+                agentName={activeAgent.agentName}
+                setUpByAgent={profile.setUpByAgent === true}
+              />
+            )}
             <TelegramConnectCard userId={subjectId} telegramChatId={profile.telegramChatId ?? null} />
           </>
         )}
