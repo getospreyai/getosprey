@@ -715,18 +715,45 @@ deployed, flag not flipped.
 
 ### Before this can ship
 
+Drafts for 1-2 and the runbook for 4 now exist; none of it is executed or final.
+
 1. Reviewed Privacy Policy + ToS with an agent-relationship section, re-dated.
+   → working draft in **`docs/PRIVACY-TOS-AGENT-DRAFT.md`**. Read its §A first:
+   six findings from the code that were not part of any prior discussion, four
+   of which may be cheaper to fix than to disclose.
 2. `POLICY_VERSION` and `EFFECTIVE_DATE` set to that date in
    `src/lib/legal.ts`; `AGENT_ACCESS_DISCLOSURE` reworded to match it section
-   for section.
+   for section. → consent copy draft in
+   **`docs/CONSENT-SCREEN-COPY-DRAFT.md`**; the full list of code changes this
+   forces is in `PRIVACY-TOS-AGENT-DRAFT.md` §E.
 3. Decision on reports/share links above, reflected in both the policy and (if
-   it is not the recommended answer) `disconnectAgent()`.
+   it is not the recommended answer) `disconnectAgent()`. Both drafts mark every
+   affected sentence `[DECISION-3]` — they should not go to a reviewer with
+   those brackets unresolved.
 4. Migration rehearsed on a Neon branch per §9b — this wave is pure
    `CREATE TABLE`, so lower risk than Phase 0's `users` ALTERs, but rehearse
-   anyway. `node scripts/verify-schema.mjs --branch` covers the new tables and
-   asserts `client_invites.token` does **not** exist.
-5. `npm run build` locally.
+   anyway. → step-by-step runbook in
+   **`docs/PHASE-2-MIGRATION-REHEARSAL.md`**. Not executed.
+5. `npm run build` locally. Still unverified here; see below.
 6. Only then `OSPREY_AGENT_ACCOUNTS=true`.
+
+### `npm run build` — what would need to be true to verify it
+
+Retried 2026-07-27; still fails identically. All three errors are
+`next/font` fetching Geist, Geist Mono, and Instrument Serif from
+`fonts.googleapis.com`, imported by `src/app/layout.tsx` — a file no commit on
+this branch touches. No other error is reported, and `tsc --noEmit` and
+`eslint` are both clean across `src` and `tests`.
+
+To verify, one of:
+
+- run `npm run build` on a machine with outbound access to
+  `fonts.googleapis.com` (i.e. Dylan's laptop, or CI), **or**
+- allow `fonts.googleapis.com` and `fonts.gstatic.com` in the sandbox's network
+  policy.
+
+Not worth working around in code — swapping to local font files to satisfy a
+sandbox would be a real change to production rendering made for a fake reason.
 
 ### Known gaps, deliberately left
 
