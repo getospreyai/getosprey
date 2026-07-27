@@ -790,6 +790,60 @@ export class PgStore implements Store {
     ]);
   }
 
+  /**
+   * Clients who left this agent's roster recently, and why.
+   *
+   * Exists because listAgentClients() filters on archived_at IS NULL, so a
+   * disconnected client simply vanishes from the roster. That is fine when the
+   * agent did the archiving themselves and knows why. It is not fine for the
+   * two cases where they did not: the client disconnected from Settings, or
+   * the farm rule disconnected them automatically after a buy-box move. An
+   * agent losing a client silently, with no way to find out what happened, is
+   * a support ticket that cannot be answered.
+   *
+   * The reason comes from the append-only consent ledger rather than from a
+   * column on agent_clients, so it says what was actually recorded at the time
+   * rather than a status someone could later overwrite. DISTINCT ON takes the
+   * newest withdrawal per client, since the ledger accumulates.
+   */
+  async listRecentlyDisconnectedClients(
+    agentUserId: string,
+    since: Date,
+  ): Promise<
+    { clientUserId: string; name: string; archivedAt: string; reason: string | null }[]
+  > {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT ac.client_user_id, u.name, ac.archived_at, w.disclosure AS reason
+      FROM agent_clients ac
+      JOIN users u ON u.id = ac.client_user_id
+      LEFT JOIN LATERAL (
+        SELECT disclosure
+        FROM client_consents
+        WHERE user_id = ac.client_user_id
+          AND agent_user_id = ac.agent_user_id
+          AND kind = 'withdraw'
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) w ON true
+      WHERE ac.agent_user_id = ${agentUserId}
+        AND ac.archived_at IS NOT NULL
+        AND ac.archived_at >= ${since.toISOString()}
+      ORDER BY ac.archived_at DESC
+    `) as {
+      client_user_id: string;
+      name: string;
+      archived_at: string;
+      reason: string | null;
+    }[];
+    return rows.map((r) => ({
+      clientUserId: r.client_user_id,
+      name: r.name,
+      archivedAt: r.archived_at,
+      reason: r.reason,
+    }));
+  }
+
   async loadSnapshot(listingId: string): Promise<ListingSnapshot | null> {
     const db = requireSql();
     const rows = (await db`

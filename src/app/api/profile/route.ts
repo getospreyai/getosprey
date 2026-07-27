@@ -9,6 +9,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveRequestScope } from "@/lib/request-scope";
 import { PatchProfileSchema, mergeProfileSettings } from "@/lib/profile-schema";
+import { enforceFarmOnBuyBoxWrite } from "@/lib/farm-enforcement";
+import { agentAccountsEnabled } from "@/lib/features";
+import { POLICY_VERSION } from "@/lib/legal";
+import { PgStore } from "@/osprey/pg-store";
 
 // The onboarding wizard polls GET to detect the Telegram binding — the
 // response must never be cached anywhere along the way.
@@ -68,9 +72,28 @@ export async function PATCH(req: NextRequest) {
 
   const merged = mergeProfileSettings(stored, parsed.data);
 
+  // The farm rule. Before Phase 2 this route could not affect an agent
+  // relationship, because every agent-sourced buy box was written by the
+  // agent. A claimed client edits their own, here, and moving it outside
+  // their agent's farm ends the relationship — see src/lib/farm-enforcement.ts
+  // for why that rather than refusing the edit.
+  //
+  // Runs BEFORE the save so an out-of-farm buy box never exists under a live
+  // agent link, and returns null immediately for anyone without an agent,
+  // which is every user in the product today.
+  const disconnected = agentAccountsEnabled()
+    ? await enforceFarmOnBuyBoxWrite(scoped.scope.subjectId, merged.buyBox, new PgStore(), POLICY_VERSION)
+    : null;
+
   // Settings-only write: never touches telegram_chat_id, so a save racing a
   // fresh /start binding can't clobber the connection.
   await store.saveProfileSettings(merged);
 
-  return NextResponse.json(merged, NO_STORE);
+  // The notice rides back on the write that caused it, so the UI can say what
+  // happened while the user is still looking at the screen. A silent
+  // disconnect is the one outcome this design rules out.
+  return NextResponse.json(
+    disconnected ? { ...merged, agentDisconnected: disconnected } : merged,
+    NO_STORE,
+  );
 }

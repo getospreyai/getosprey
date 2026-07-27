@@ -120,9 +120,15 @@ export default async function ClientsPage() {
   }
 
   const store = new PgStore();
-  const [clients, rawFarm] = await Promise.all([
+  // Clients who left in the last 30 days, and why. Without this a client who
+  // disconnects — by choice from Settings, or automatically after moving their
+  // buy box outside the farm — simply vanishes from the roster, and the agent
+  // has no way to find out what happened.
+  const departedSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [clients, rawFarm, departed] = await Promise.all([
     store.listAgentClients(scoped.userId),
     store.loadFarmMarkets(scoped.userId),
+    store.listRecentlyDisconnectedClients(scoped.userId, departedSince),
   ]);
   const farm = parseFarmMarkets(rawFarm);
   const latest = await store.loadLatestVerdictPerUser(clients.map((c) => c.clientUserId));
@@ -167,7 +173,52 @@ export default async function ClientsPage() {
           ))}
         </div>
       )}
+
+      {departed.length > 0 && <DepartedSection departed={departed} />}
     </Shell>
+  );
+}
+
+/**
+ * Clients who recently left, with the reason recorded at the time.
+ *
+ * Deliberately plain and un-alarming: a disconnect is a normal thing that
+ * happens, and the point is that the agent can see it rather than that they
+ * should worry about it. The reason comes from the append-only consent
+ * ledger, so it is what was actually recorded, not a status someone could
+ * have overwritten since.
+ */
+function DepartedSection({
+  departed,
+}: {
+  departed: { clientUserId: string; name: string; archivedAt: string; reason: string | null }[];
+}) {
+  return (
+    <div className="mt-12">
+      <h2 className="text-sm font-medium text-white/70">Recently disconnected</h2>
+      <p className="mt-1 text-xs text-white/40">
+        Clients who left your roster in the last 30 days. Their accounts and history are
+        unchanged — you no longer have access.
+      </p>
+      <ul className="mt-4 space-y-2">
+        {departed.map((d) => (
+          <li
+            key={d.clientUserId}
+            className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm text-white/80">{d.name}</span>
+              <span className="text-xs text-white/35">
+                {new Date(d.archivedAt).toLocaleDateString()}
+              </span>
+            </div>
+            {d.reason && (
+              <p className="mt-1.5 text-xs leading-5 text-white/45">{d.reason}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
