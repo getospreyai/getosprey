@@ -1,13 +1,14 @@
 import Link from "next/link";
+import { EFFECTIVE_DATE } from "@/lib/legal";
 
 // The disclaimer stack here is the substantive part: Osprey produces
 // investment ANALYSIS, not brokerage/advisory services. Staying on the
 // "informational analytics" side of NRS 645 (brokerage) and the Advisers Act
 // (securities — direct real estate isn't one) is what keeps the product
 // unlicensed-but-lawful, so §3 and §4 are load-bearing, not boilerplate.
-
-/** Fixed; hand-edited on material change. See the note in privacy/page.tsx. */
-const EFFECTIVE_DATE = "July 21, 2026";
+//
+// EFFECTIVE_DATE is shared with /privacy from src/lib/legal.ts — the two pages
+// each held their own copy before, which is a drift waiting to happen.
 
 export const metadata = {
   title: "Terms of Service — Osprey",

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EFFECTIVE_DATE } from "@/lib/legal";
 
 // Structured to satisfy NRS 603A.340(1)(a)-(e) — Nevada's operator notice
 // statute, which binds Osprey regardless of size (the small-local-business
@@ -8,15 +9,15 @@ import Link from "next/link";
 //   (b) process to review/request changes                  -> §9
 //   (c) how material changes are communicated              -> §14
 //   (d) third-party cross-site tracking (we run none)      -> §7
-//   (e) effective date                                     -> constant below
+//   (e) effective date                                     -> EFFECTIVE_DATE
 // NRS 603A.345 (opt-out-of-sale request address + 60-day response) -> §8.
 // The AI/LLM training disclosure in §4 is an FTC Act §5 obligation: a
 // permissive data practice needs clear, up-front notice — never a quiet edit.
-
-/** Fixed, hand-edited on material change. Must NOT auto-render "today": a
- *  notice whose effective date silently tracks the clock is misleading and
- *  defeats the statutory element it exists to satisfy. */
-const EFFECTIVE_DATE = "July 21, 2026";
+//
+// EFFECTIVE_DATE lives in src/lib/legal.ts alongside POLICY_VERSION. This page
+// and /terms each used to hold their own copy of it, which were in sync only
+// because neither had been edited yet — and the two dates disagreeing is
+// exactly the kind of drift the statutory element is meant to prevent.
 
 export const metadata = {
   title: "Privacy Policy — Osprey",
