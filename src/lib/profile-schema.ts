@@ -115,9 +115,16 @@ export const PatchProfileSchema = z.object({
 export type PatchProfileData = z.infer<typeof PatchProfileSchema>;
 
 /** Merge validated settings-form data onto a stored profile. Never touches
- *  id/name/telegramChatId/onboarded/initialScanAt. dealbreakers/tasteNotes
- *  only change when the payload includes them — omitted means "unchanged,"
- *  not "clear." */
+ *  id/name/telegramChatId/onboarded/initialScanAt/setUpByAgent.
+ *  dealbreakers/tasteNotes only change when the payload includes them —
+ *  omitted means "unchanged," not "clear."
+ *
+ *  setUpByAgent survives by two independent mechanisms, which is deliberate:
+ *  it is absent from PatchProfileSchema (so zod strips it from any payload
+ *  that sends one), and `...stored` carries the persisted value through
+ *  regardless. A user who could set it could claim an agent configured their
+ *  buy box; a user who could clear it could erase the provenance the label
+ *  exists to show. tests/profile-schema.test.ts pins both halves. */
 export function mergeProfileSettings(
   stored: InvestorProfile,
   data: PatchProfileData,
