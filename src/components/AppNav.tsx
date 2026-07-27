@@ -5,11 +5,15 @@ import { signOut } from "@/auth";
 export default function AppNav({
   userName,
   active,
+  showClients,
 }: {
   userName: string;
-  active: "dashboard" | "settings";
+  active: "dashboard" | "settings" | "clients";
+  /** Render the Clients link. Visibility only — /clients enforces its own
+   *  access, so passing this wrongly cannot expose anyone's data. */
+  showClients?: boolean;
 }) {
-  const linkClass = (page: "dashboard" | "settings") =>
+  const linkClass = (page: "dashboard" | "settings" | "clients") =>
     active === page
       ? "text-white"
       : "text-white/60 transition hover:text-white";
@@ -24,6 +28,11 @@ export default function AppNav({
           <Link href="/dashboard" className={linkClass("dashboard")}>
             Dashboard
           </Link>
+          {showClients && (
+            <Link href="/clients" className={linkClass("clients")}>
+              Clients
+            </Link>
+          )}
           <Link href="/settings" className={linkClass("settings")}>
             Settings
           </Link>

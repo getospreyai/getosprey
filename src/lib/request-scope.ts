@@ -21,6 +21,9 @@ export type ScopeResult =
       /** The signed-in user (the actor), NOT necessarily the subject. */
       userId: string;
       userName: string;
+      /** Sign-in snapshot, for NAV/UI gating only — never authorization.
+       *  See docs/AGENT-ACCOUNTS-PLAN.md §3a T5. */
+      role: string;
     }
   | { ok: false; reason: "unauthenticated" }
   | { ok: false; reason: "no_db"; userName: string }
@@ -51,5 +54,12 @@ export async function resolveRequestScope(clientId?: string | null): Promise<Sco
   const scope = await resolveScope(userId, clientId);
   if (!scope) return { ok: false, reason: "forbidden", userName };
 
-  return { ok: true, store: scopedStore(scope), scope, userId, userName };
+  return {
+    ok: true,
+    store: scopedStore(scope),
+    scope,
+    userId,
+    userName,
+    role: session.user.role ?? "investor",
+  };
 }

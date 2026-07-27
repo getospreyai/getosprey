@@ -213,6 +213,26 @@ export async function ensureSchema(): Promise<void> {
         ON agent_clients (client_user_id) WHERE archived_at IS NULL
     `,
 
+    // The agent's declared farm markets. Client buy boxes must fall inside
+    // these (see withinFarm), which is what keeps daily scan cost flat per
+    // agent no matter how many clients they add — each distinct market is its
+    // own full paginated RentCast pull.
+    sql`
+      CREATE TABLE IF NOT EXISTS agent_settings (
+        agent_user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        farm_markets  JSONB NOT NULL DEFAULT '[]'::jsonb,
+        updated_at    TIMESTAMPTZ DEFAULT now()
+      )
+    `,
+
+    // The client's real contact address, kept OFF users.email deliberately.
+    // A managed client's users.email is a synthetic placeholder, so adding a
+    // client can never collide with an existing account — which would both
+    // fail confusingly and turn client creation into an email-enumeration
+    // oracle. Phase 2's invite reads this; claiming moves it onto users.email
+    // under the consent flow, where a collision is handled explicitly.
+    sql`ALTER TABLE agent_clients ADD COLUMN IF NOT EXISTS client_email TEXT`,
+
     // Constrain the enum-ish columns. canActAsViewer() allowlists 'active', so a
     // typo would lock an account out rather than open it up — but a bad value is
     // still a silent, hard-to-diagnose state, and role has no code-level guard at

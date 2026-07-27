@@ -38,6 +38,21 @@ export interface ReportRow<T = unknown> {
   updatedAt: string;
 }
 
+/** One active client on an agent's roster, joined with their profile. */
+export interface AgentClientRow {
+  clientUserId: string;
+  label: string | null;
+  /** The client's real contact address; users.email is a synthetic placeholder
+   *  for managed clients. Null until the agent supplies one. */
+  clientEmail: string | null;
+  alertsLive: boolean;
+  createdAt: string;
+  name: string;
+  /** 'managed' | 'invited' | 'active' — drives whether the agent may still edit. */
+  status: string;
+  profile: InvestorProfile | null;
+}
+
 /** A share_links row. */
 export interface ShareLinkRow {
   token: string;
@@ -382,6 +397,113 @@ export class PgStore implements Store {
       ORDER BY d.label
     `) as { label: string }[];
     return rows.map((r) => r.label);
+  }
+
+  // --- Agent accounts ------------------------------------------------------
+
+  /** The agent's declared farm markets (empty when never set). */
+  async loadFarmMarkets(agentUserId: string): Promise<unknown[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT farm_markets FROM agent_settings WHERE agent_user_id = ${agentUserId}
+    `) as { farm_markets: unknown[] }[];
+    return rows[0]?.farm_markets ?? [];
+  }
+
+  async saveFarmMarkets(agentUserId: string, markets: unknown[]): Promise<void> {
+    const db = requireSql();
+    await db`
+      INSERT INTO agent_settings (agent_user_id, farm_markets, updated_at)
+      VALUES (${agentUserId}, ${JSON.stringify(markets)}::jsonb, now())
+      ON CONFLICT (agent_user_id) DO UPDATE
+        SET farm_markets = EXCLUDED.farm_markets, updated_at = now()
+    `;
+  }
+
+  /**
+   * Create a managed client: a real users row (so every per-user table keeps
+   * working unchanged), its investor profile, and the roster row — atomically,
+   * so a failure can never leave an orphan user with no agent.
+   *
+   * `email` is a SYNTHETIC placeholder. The client's real address lives in
+   * agent_clients.client_email; see the schema comment for why.
+   */
+  async createManagedClient(params: {
+    agentUserId: string;
+    clientUserId: string;
+    name: string;
+    syntheticEmail: string;
+    clientEmail: string | null;
+    label: string | null;
+    profile: unknown;
+  }): Promise<void> {
+    const db = requireSql();
+    await db.transaction([
+      db`
+        INSERT INTO users (id, email, password_hash, name, role, status)
+        VALUES (${params.clientUserId}, ${params.syntheticEmail}, NULL, ${params.name},
+                'investor', 'managed')
+      `,
+      db`
+        INSERT INTO investor_profiles (user_id, profile)
+        VALUES (${params.clientUserId}, ${JSON.stringify(params.profile)}::jsonb)
+      `,
+      db`
+        INSERT INTO agent_clients (agent_user_id, client_user_id, label, client_email)
+        VALUES (${params.agentUserId}, ${params.clientUserId}, ${params.label},
+                ${params.clientEmail})
+      `,
+    ]);
+  }
+
+  /** One row per active client on this agent's roster, newest first. */
+  async listAgentClients(agentUserId: string): Promise<AgentClientRow[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT ac.client_user_id, ac.label, ac.client_email, ac.alerts_live, ac.created_at,
+             u.name, u.status, ip.profile
+      FROM agent_clients ac
+      JOIN users u ON u.id = ac.client_user_id
+      LEFT JOIN investor_profiles ip ON ip.user_id = ac.client_user_id
+      WHERE ac.agent_user_id = ${agentUserId} AND ac.archived_at IS NULL
+      ORDER BY ac.created_at DESC
+    `) as {
+      client_user_id: string;
+      label: string | null;
+      client_email: string | null;
+      alerts_live: boolean;
+      created_at: string;
+      name: string;
+      status: string;
+      profile: Record<string, unknown> | null;
+    }[];
+    return rows.map((r) => ({
+      clientUserId: r.client_user_id,
+      label: r.label,
+      clientEmail: r.client_email,
+      alertsLive: r.alerts_live,
+      createdAt: r.created_at,
+      name: r.name,
+      status: r.status,
+      profile: r.profile
+        ? ({ ...r.profile, id: r.client_user_id } as InvestorProfile)
+        : null,
+    }));
+  }
+
+  /** Newest verdict per client, for the roster's "last match" column. One
+   *  query for the whole book rather than N — DISTINCT ON keys off the same
+   *  (user_id, created_at DESC) index the ledger already has. */
+  async loadLatestVerdictPerUser(userIds: string[]): Promise<Map<string, VerdictRecord>> {
+    if (userIds.length === 0) return new Map();
+    const db = requireSql();
+    const rows = (await db`
+      SELECT DISTINCT ON (user_id) user_id, record
+      FROM verdicts
+      WHERE user_id = ANY(${userIds}::uuid[])
+      ORDER BY user_id, created_at DESC
+    `) as { user_id: string; record: VerdictRecord }[];
+    return new Map(rows.map((r) => [r.user_id, r.record]));
   }
 
   async loadSnapshot(listingId: string): Promise<ListingSnapshot | null> {

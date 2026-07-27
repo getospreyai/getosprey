@@ -64,6 +64,14 @@ export function systemSubject(id: string): SubjectId {
   return id as SubjectId;
 }
 
+/** users.id is a UUID column; anything else cannot identify a user and must
+ *  not be handed to Postgres, which raises on a bad cast. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 /** An active (non-archived) roster row, plus the client's account status. */
 export interface ClientLink {
   clientStatus: string | null;
@@ -118,6 +126,14 @@ export async function resolveScope(
   deps: ScopeDeps = dbScopeDeps,
 ): Promise<Scope | null> {
   if (!viewerId) return null;
+
+  // Ids reach here straight from the URL. users.id is UUID, so a malformed
+  // value makes Postgres raise on the cast — which surfaced as a 500 and made
+  // "not a uuid" distinguishable from "not permitted", the very split T4
+  // exists to prevent. Reject the shape here so every unusable id refuses
+  // identically.
+  if (requestedSubjectId && !isUuid(requestedSubjectId)) return null;
+  if (!isUuid(viewerId)) return null;
 
   // Revocation. A JWT outlives any change to the underlying row, so a viewer
   // that has been deleted, suspended, or converted to an agent-managed account

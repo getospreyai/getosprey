@@ -15,6 +15,7 @@ export default async function SettingsPage() {
 
   const userName = scoped.userName;
   const dbReady = scoped.ok;
+  const showClients = scoped.ok && scoped.role !== "investor";
   const profile = scoped.ok ? await scoped.store.loadProfile() : null;
   // The Telegram deep link binds a chat to the profile being viewed, so it
   // carries the SUBJECT's id, not the viewer's.
@@ -28,7 +29,7 @@ export default async function SettingsPage() {
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#0a0718] text-white">
       <Backdrop />
 
-      <AppNav userName={userName} active="settings" />
+      <AppNav userName={userName} active="settings" showClients={showClients} />
 
       <section className="relative z-10 mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 pb-16 sm:px-10">
         <div>

@@ -114,6 +114,21 @@ describe("resolveScope — the authorization matrix", () => {
     expect(ghost).toEqual(real);
   });
 
+  // Found in end-to-end testing: a non-UUID id reached Postgres, which raised
+  // on the cast and produced a 500 — making "malformed" distinguishable from
+  // "not permitted", the exact split T4 forbids.
+  it("REFUSES a malformed subject id without querying", async () => {
+    const loadClientLink = vi.fn(roster.loadClientLink);
+    for (const bad of ["not-a-uuid", "1; DROP TABLE users", "../../etc/passwd", "  "]) {
+      expect(await resolveScope(AGENT_A, bad, { ...roster, loadClientLink })).toBeNull();
+    }
+    expect(loadClientLink).not.toHaveBeenCalled();
+  });
+
+  it("REFUSES a malformed viewer id", async () => {
+    expect(await resolveScope("not-a-uuid", undefined, roster)).toBeNull();
+  });
+
   it("never consults a role claim — only the roster decides", async () => {
     // An "agent" who is not on the roster for this client gets nothing, no
     // matter what a (stale, sign-in-snapshot) session role would say.

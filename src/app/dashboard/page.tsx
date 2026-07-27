@@ -48,6 +48,7 @@ export default async function DashboardPage() {
 
   const userName = scoped.userName;
   const dbReady = scoped.ok;
+  const showClients = scoped.ok && scoped.role !== "investor";
   // Telegram deep links bind a chat to the profile being viewed, so they
   // carry the SUBJECT's id, not the viewer's.
   const subjectId = scoped.ok ? scoped.scope.subjectId : "";
@@ -70,7 +71,7 @@ export default async function DashboardPage() {
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#0a0718] text-white">
       <Backdrop />
 
-      <AppNav userName={userName} active="dashboard" />
+      <AppNav userName={userName} active="dashboard" showClients={showClients} />
 
       <section className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-16 sm:px-10">
         {!dbReady ? (

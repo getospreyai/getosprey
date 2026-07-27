@@ -174,6 +174,21 @@ CREATE INDEX IF NOT EXISTS agent_clients_client_idx
 CREATE UNIQUE INDEX IF NOT EXISTS agent_clients_one_active_agent
   ON agent_clients (client_user_id) WHERE archived_at IS NULL;
 
+-- The agent's declared farm markets. Client buy boxes must fall inside these
+-- (see withinFarm), which keeps daily scan cost flat per agent regardless of
+-- client count — each distinct market is its own full paginated RentCast pull.
+CREATE TABLE IF NOT EXISTS agent_settings (
+  agent_user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  farm_markets  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at    TIMESTAMPTZ DEFAULT now()
+);
+
+-- The client's real contact address, kept OFF users.email deliberately. A
+-- managed client's users.email is a synthetic placeholder, so adding a client
+-- can never collide with an existing account — which would both fail
+-- confusingly and turn client creation into an email-enumeration oracle.
+ALTER TABLE agent_clients ADD COLUMN IF NOT EXISTS client_email TEXT;
+
 -- Constrain the enum-ish columns. ADD CONSTRAINT has no IF NOT EXISTS.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_status_check') THEN
