@@ -9,7 +9,7 @@
 // test proves the feature works; the rest prove it cannot be abused.
 
 import { describe, it, expect, vi } from "vitest";
-import { resolveScope, systemSubject, type ClientLinkLookup } from "@/lib/scope";
+import { resolveScope, systemSubject, type ScopeDeps } from "@/lib/scope";
 import { ScopedStore, ScopeWriteError } from "@/lib/scoped-store";
 
 const AGENT_A = "11111111-1111-1111-1111-111111111111";
@@ -18,12 +18,29 @@ const CLIENT_OF_A = "33333333-3333-3333-3333-333333333333";
 const SOLO = "44444444-4444-4444-4444-444444444444";
 const GHOST = "99999999-9999-9999-9999-999999999999";
 
-/** Only AGENT_A -> CLIENT_OF_A is an active roster row. */
-const roster: ClientLinkLookup = async (agentId, clientId) =>
-  agentId === AGENT_A && clientId === CLIENT_OF_A;
+/** Every viewer here is a normal active account unless a test says otherwise. */
+const activeViewer = async () => ({ status: "active" });
+
+/** Only AGENT_A -> CLIENT_OF_A is an active roster row. The client is still
+ *  agent-managed (has not claimed their account). */
+const roster: ScopeDeps = {
+  loadViewerStatus: activeViewer,
+  loadClientLink: async (agentId, clientId) =>
+    agentId === AGENT_A && clientId === CLIENT_OF_A ? { clientStatus: "managed" } : null,
+};
 
 /** Nobody is linked — stands in for an archived/disconnected relationship. */
-const noRoster: ClientLinkLookup = async () => false;
+const noRoster: ScopeDeps = {
+  loadViewerStatus: activeViewer,
+  loadClientLink: async () => null,
+};
+
+/** The client has CLAIMED their account: they own their data now. */
+const claimedClient: ScopeDeps = {
+  loadViewerStatus: activeViewer,
+  loadClientLink: async (agentId, clientId) =>
+    agentId === AGENT_A && clientId === CLIENT_OF_A ? { clientStatus: "active" } : null,
+};
 
 describe("resolveScope — self", () => {
   it("grants self scope when no subject is requested", async () => {
@@ -33,10 +50,10 @@ describe("resolveScope — self", () => {
   });
 
   it("treats an explicit own id as self, without a roster lookup", async () => {
-    const lookup = vi.fn(noRoster);
-    const scope = await resolveScope(SOLO, SOLO, lookup);
+    const loadClientLink = vi.fn(noRoster.loadClientLink);
+    const scope = await resolveScope(SOLO, SOLO, { ...noRoster, loadClientLink });
     expect(scope?.relation).toBe("self");
-    expect(lookup).not.toHaveBeenCalled();
+    expect(loadClientLink).not.toHaveBeenCalled();
   });
 
   it("refuses an empty viewer id", async () => {
@@ -104,6 +121,55 @@ describe("resolveScope — the authorization matrix", () => {
   });
 });
 
+// Sessions are JWTs and cannot be revoked server-side, so the viewer's account
+// must be re-checked per request or a deleted/suspended user keeps full access
+// until their token expires.
+describe("resolveScope — viewer revocation", () => {
+  const withViewer = (status: string | null, exists = true): ScopeDeps => ({
+    loadViewerStatus: async () => (exists ? { status } : null),
+    loadClientLink: roster.loadClientLink,
+  });
+
+  it("REFUSES a viewer whose account no longer exists", async () => {
+    expect(await resolveScope(SOLO, undefined, withViewer(null, false))).toBeNull();
+    expect(await resolveScope(AGENT_A, CLIENT_OF_A, withViewer(null, false))).toBeNull();
+  });
+
+  it("REFUSES a viewer converted to an agent-managed account", async () => {
+    expect(await resolveScope(SOLO, undefined, withViewer("managed"))).toBeNull();
+  });
+
+  it("REFUSES any status outside the allowlist, including future ones", async () => {
+    for (const status of ["invited", "suspended", "disabled", "manged"]) {
+      expect(await resolveScope(SOLO, undefined, withViewer(status))).toBeNull();
+    }
+  });
+
+  it("allows an active viewer, and a legacy row with no status", async () => {
+    expect(await resolveScope(SOLO, undefined, withViewer("active"))).not.toBeNull();
+    expect(await resolveScope(SOLO, undefined, withViewer(null))).not.toBeNull();
+  });
+});
+
+// The commitment made on the claim-time consent screen: once a client claims
+// their account they own their data, and the agent keeps READ access only.
+describe("resolveScope — canEdit follows the client's claim status", () => {
+  it("an agent may edit a still-managed client", async () => {
+    const scope = await resolveScope(AGENT_A, CLIENT_OF_A, roster);
+    expect(scope?.canEdit).toBe(true);
+  });
+
+  it("an agent drops to READ-ONLY once the client has claimed", async () => {
+    const scope = await resolveScope(AGENT_A, CLIENT_OF_A, claimedClient);
+    expect(scope).toMatchObject({ relation: "agent_of_client", canEdit: false });
+  });
+
+  it("self scope is always writable", async () => {
+    const scope = await resolveScope(SOLO, undefined, claimedClient);
+    expect(scope?.canEdit).toBe(true);
+  });
+});
+
 describe("systemSubject", () => {
   it("passes the id through for trusted contexts", () => {
     expect(systemSubject(SOLO)).toBe(SOLO);
@@ -132,6 +198,18 @@ describe("ScopedStore — the id cannot be supplied by the caller", () => {
     expect(inner.loadVerdictForListing).toHaveBeenCalledWith(CLIENT_OF_A, "L1");
   });
 
+  // Rate limits bound paid LLM spend, so they must follow the ACTOR. Counting
+  // the subject would give an agent one budget per client.
+  it("counts report usage against the viewer, not the subject", async () => {
+    const inner = { countReportsSince: vi.fn().mockResolvedValue(0) };
+    const store = new ScopedStore(scope, inner as never);
+    const since = new Date("2026-07-01T00:00:00Z");
+
+    await store.countReportsSince(since);
+
+    expect(inner.countReportsSince).toHaveBeenCalledWith(AGENT_A, since);
+  });
+
   it("forces a saved profile's id to the authorized subject", async () => {
     const inner = { saveProfileSettings: vi.fn().mockResolvedValue(undefined) };
     const store = new ScopedStore(scope, inner as never);
@@ -154,11 +232,13 @@ describe("ScopedStore — the id cannot be supplied by the caller", () => {
     const readOnly = new ScopedStore({ ...scope, canEdit: false }, inner as never);
 
     await expect(readOnly.loadProfile()).resolves.toBeNull();
-    expect(() => readOnly.createShareLink("L1")).toThrow(ScopeWriteError);
-    expect(() => readOnly.saveProfileSettings({ id: CLIENT_OF_A } as never)).toThrow(
-      ScopeWriteError,
-    );
-    expect(() => readOnly.markReportFailed("L1")).toThrow(ScopeWriteError);
+    // Rejections, not synchronous throws — a route using .catch() must still
+    // see the refusal rather than an unhandled exception.
+    await expect(readOnly.createShareLink("L1")).rejects.toThrow(ScopeWriteError);
+    await expect(
+      readOnly.saveProfileSettings({ id: CLIENT_OF_A } as never),
+    ).rejects.toThrow(ScopeWriteError);
+    await expect(readOnly.markReportFailed("L1")).rejects.toThrow(ScopeWriteError);
     expect(inner.createShareLink).not.toHaveBeenCalled();
   });
 });

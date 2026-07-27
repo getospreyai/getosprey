@@ -4,10 +4,15 @@ import bcrypt from "bcryptjs";
 import { sql, ensureSchema, hasDb } from "@/lib/db";
 import { canAuthenticate } from "@/lib/auth-guard";
 
-/** A real bcrypt digest of a value nothing can supply, compared against when
- *  no login is possible so the failure path costs roughly what a real one
- *  does. Never matches: bcrypt digests are salted, and this is not the hash of
- *  any password a user could enter. */
+/** A well-formed bcrypt digest (cost 10, matching signup's) compared against
+ *  when no login is possible, so the failure path costs roughly what a real
+ *  one does.
+ *
+ *  Its RESULT IS DISCARDED AND MUST STAY THAT WAY — that, not any property of
+ *  this particular string, is what makes it safe. The surrounding branch
+ *  returns null unconditionally. Never write `if (await bcrypt.compare(...))`
+ *  against this value: doing so would turn a timing-equalization no-op into an
+ *  authentication bypass. */
 const DUMMY_HASH = "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -80,6 +85,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
+      if (session.user) {
+        // Assigned unconditionally: next-auth.d.ts declares `role` as a
+        // required string, so leaving it unset on a token missing `id` would
+        // hand callers a value TypeScript guarantees but that is undefined at
+        // runtime.
+        session.user.role = typeof token.role === "string" ? token.role : "investor";
+      }
       if (session.user && typeof token.id === "string") {
         session.user.id = token.id;
         // NAVIGATION ONLY. This is a snapshot taken at sign-in and goes stale
@@ -88,7 +100,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // 'agent'. Never make an authorization decision from it; resolveScope()
         // re-reads the database on every cross-user access. See
         // docs/AGENT-ACCOUNTS-PLAN.md §3a T5.
-        session.user.role = typeof token.role === "string" ? token.role : "investor";
       }
       return session;
     },

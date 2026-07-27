@@ -24,8 +24,22 @@ export interface AuthCandidate {
   status?: string | null;
 }
 
-/** Statuses that exist specifically to represent a non-login account. */
-const NON_LOGIN_STATUSES = new Set(["managed", "invited"]);
+/**
+ * Whether an account may act at all — hold a session, or be the viewer on a
+ * request.
+ *
+ * ALLOWLIST, deliberately. An earlier version denied a fixed set
+ * ('managed', 'invited'), which failed OPEN: a typo ('manged'), or any status
+ * added later ('suspended', 'disabled'), fell through as permitted. Only
+ * 'active' is permitted now.
+ *
+ * A null/undefined status is tolerated for a row read by a query that does not
+ * select the column; the database column is NOT NULL DEFAULT 'active', so no
+ * stored row is actually statusless.
+ */
+export function canActAsViewer(status?: string | null): boolean {
+  return status == null || status === "active";
+}
 
 /**
  * Whether this row may attempt password authentication.
@@ -34,11 +48,11 @@ const NON_LOGIN_STATUSES = new Set(["managed", "invited"]);
  *  1. No usable password hash. Airtight by construction — managed and invited
  *     clients are created with NULL — and it is what keeps bcrypt.compare from
  *     ever seeing a non-string.
- *  2. A status that means "this account does not log in", in case a row ever
- *     acquires a hash it should not have.
+ *  2. A status that is not 'active', in case a row ever acquires a hash it
+ *     should not have.
  */
 export function canAuthenticate(user: AuthCandidate): boolean {
   if (typeof user.password_hash !== "string" || user.password_hash.length === 0) return false;
-  if (user.status != null && NON_LOGIN_STATUSES.has(user.status)) return false;
+  if (!canActAsViewer(user.status)) return false;
   return true;
 }

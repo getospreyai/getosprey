@@ -165,3 +165,23 @@ CREATE TABLE IF NOT EXISTS agent_clients (
 
 CREATE INDEX IF NOT EXISTS agent_clients_client_idx
   ON agent_clients (client_user_id);
+
+-- A client belongs to at most ONE agent at a time. Without this, two agents
+-- could each hold an active roster row for the same person and both read their
+-- financial data, while the privacy copy promises the client that "your agent"
+-- (singular) has access. Archived rows are excluded so a client can be handed
+-- from one agent to another.
+CREATE UNIQUE INDEX IF NOT EXISTS agent_clients_one_active_agent
+  ON agent_clients (client_user_id) WHERE archived_at IS NULL;
+
+-- Constrain the enum-ish columns. ADD CONSTRAINT has no IF NOT EXISTS.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_status_check') THEN
+    ALTER TABLE users ADD CONSTRAINT users_status_check
+      CHECK (status IN ('active', 'managed', 'invited'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check') THEN
+    ALTER TABLE users ADD CONSTRAINT users_role_check
+      CHECK (role IN ('investor', 'agent', 'brokerage_admin'));
+  END IF;
+END $$;

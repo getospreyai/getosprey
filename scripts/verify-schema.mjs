@@ -106,11 +106,15 @@ for (const [table, column] of EXPECTED) {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}${ok ? `  (${typeOf.get(key)})` : ""}`);
 }
 
+// Counted separately from `missing`: a column that exists but kept its NOT
+// NULL is a different failure, and reporting it as "missing" sends whoever is
+// running the migration gate hunting for a column that is right there.
+let notNullable = 0;
 console.log("\nExpected nullable:");
 for (const [table, column] of EXPECTED_NULLABLE) {
   const key = `${table}.${column}`;
   const ok = nullableOf.get(key) === true;
-  if (!ok) missing++;
+  if (!ok) notNullable++;
   const detail = present.has(key) ? (ok ? "nullable" : "STILL NOT NULL") : "column absent";
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}  (${detail})`);
 }
@@ -128,9 +132,12 @@ for (const table of COUNT_TABLES) {
   console.log(`  ${String(n).padStart(6)}  ${table}`);
 }
 
-if (missing > 0) {
-  console.error(`\nverify-schema: ${missing} expected column(s) MISSING.`);
-  console.error("ensureSchema() has not run against this database since the migration landed.");
+if (missing > 0 || notNullable > 0) {
+  const parts = [];
+  if (missing > 0) parts.push(`${missing} expected column(s) MISSING`);
+  if (notNullable > 0) parts.push(`${notNullable} column(s) STILL NOT NULL`);
+  console.error(`\nverify-schema: ${parts.join("; ")}.`);
+  console.error("ensureSchema() has not fully run against this database since the migration landed.");
   process.exit(1);
 }
-console.log("\nverify-schema: all expected columns present.");
+console.log("\nverify-schema: all expected columns present and correctly nullable.");

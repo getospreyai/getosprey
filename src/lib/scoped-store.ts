@@ -17,7 +17,7 @@
 // user and keep using PgStore directly with systemSubject().
 
 import { PgStore, type ReportRow, type ShareLinkRow } from "@/osprey/pg-store";
-import type { Scope } from "@/lib/scope";
+import type { Scope, SubjectId } from "@/lib/scope";
 import type { InvestorProfile } from "@/osprey/agent/model";
 import type { VerdictRecord } from "@/osprey/agent/loop";
 
@@ -40,8 +40,10 @@ export class ScopedStore {
   }
 
   /** The authorized subject, for the rare call that genuinely needs the raw id
-   *  (e.g. building a share URL). Reading it is fine; it is already checked. */
-  get subjectId(): string {
+   *  (e.g. building a share URL). Returns the BRANDED type: handing it to an
+   *  unscoped PgStore method still requires an explicit cast, which keeps
+   *  every bypass greppable rather than letting a plain string leak out. */
+  get subjectId(): SubjectId {
     return this.scope.subjectId;
   }
 
@@ -58,7 +60,7 @@ export class ScopedStore {
   /** Settings-style write: never touches telegram_chat_id, which is owned by
    *  the webhook's /start binding. The profile's own id is forced to the
    *  authorized subject so a tampered payload cannot redirect the write. */
-  saveProfileSettings(profile: InvestorProfile): Promise<void> {
+  async saveProfileSettings(profile: InvestorProfile): Promise<void> {
     this.assertWritable();
     return this.store.saveProfileSettings({ ...profile, id: this.scope.subjectId });
   }
@@ -85,33 +87,41 @@ export class ScopedStore {
     return this.store.getReport<T>(this.scope.subjectId, listingId);
   }
 
-  upsertReportGenerating(listingId: string): Promise<void> {
+  async upsertReportGenerating(listingId: string): Promise<void> {
     this.assertWritable();
     return this.store.upsertReportGenerating(this.scope.subjectId, listingId);
   }
 
-  saveReportReady(listingId: string, report: unknown, model: string): Promise<void> {
+  async saveReportReady(listingId: string, report: unknown, model: string): Promise<void> {
     this.assertWritable();
     return this.store.saveReportReady(this.scope.subjectId, listingId, report, model);
   }
 
-  markReportFailed(listingId: string): Promise<void> {
+  async markReportFailed(listingId: string): Promise<void> {
     this.assertWritable();
     return this.store.markReportFailed(this.scope.subjectId, listingId);
   }
 
+  /**
+   * Report generations to charge against the rate limit.
+   *
+   * Counts the ACTOR (scope.viewerId), not the subject. Counting the subject
+   * would multiply the limit by an agent's client count — 50 clients would buy
+   * 50x the paid LLM budget, all attributable to one agent. For a self scope
+   * the two ids are identical, so solo investors are unaffected.
+   */
   countReportsSince(since: Date): Promise<number> {
-    return this.store.countReportsSince(this.scope.subjectId, since);
+    return this.store.countReportsSince(this.scope.viewerId, since);
   }
 
   // --- Share links ---------------------------------------------------------
 
-  createShareLink(listingId: string): Promise<string> {
+  async createShareLink(listingId: string): Promise<string> {
     this.assertWritable();
     return this.store.createShareLink(this.scope.subjectId, listingId);
   }
 
-  revokeShareLink(listingId: string): Promise<void> {
+  async revokeShareLink(listingId: string): Promise<void> {
     this.assertWritable();
     return this.store.revokeShareLink(this.scope.subjectId, listingId);
   }

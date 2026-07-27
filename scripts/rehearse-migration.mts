@@ -30,9 +30,37 @@ if (!branchUrl) {
   process.exit(2);
 }
 
+/**
+ * Identity of the DATABASE a URL addresses, for comparison.
+ *
+ * Not the raw string: Neon exposes a pooled and a direct endpoint for the same
+ * branch (`ep-x-pooler.<region>...` and `ep-x.<region>...`), which are
+ * different URLs pointing at the SAME data. Comparing raw strings would let
+ * production's direct URL past a guard whose whole job is to keep this script
+ * off production. Credentials and query params are irrelevant here and are
+ * deliberately excluded.
+ */
+function dbIdentity(url: string): string {
+  const host = (url.match(/@([^/?]+)/)?.[1] ?? "").toLowerCase();
+  const dbName = (url.match(/@[^/]+\/([^/?]+)/)?.[1] ?? "").toLowerCase();
+  const endpoint = host.split(".")[0].replace(/-pooler$/, "");
+  return `${endpoint}/${dbName}`;
+}
+
 const prodUrl = process.env.DATABASE_URL || fromEnvLocal("DATABASE_URL");
-if (prodUrl && branchUrl === prodUrl) {
-  console.error("rehearse-migration: NEON_BRANCH_URL equals DATABASE_URL — refusing to run.");
+if (!prodUrl) {
+  // Without production's URL there is nothing to compare against, so the guard
+  // below cannot fire. Refuse rather than run unprotected — this is exactly
+  // the setup (prod URL only in Vercel) where a stale NEON_BRANCH_URL would go
+  // unnoticed.
+  console.error("rehearse-migration: DATABASE_URL is not available to compare against.");
+  console.error("Cannot confirm NEON_BRANCH_URL is not production. Refusing to run.");
+  console.error("Set DATABASE_URL (env or .env.local) so the safety check can run.");
+  process.exit(2);
+}
+if (dbIdentity(branchUrl) === dbIdentity(prodUrl)) {
+  console.error("rehearse-migration: NEON_BRANCH_URL resolves to the SAME database as");
+  console.error(`DATABASE_URL (${dbIdentity(prodUrl)}) — refusing to run.`);
   console.error("That would migrate production. Point NEON_BRANCH_URL at a branch.");
   process.exit(2);
 }

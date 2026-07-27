@@ -17,9 +17,15 @@
 //
 //  * The session's `role` claim is never consulted here. It is a sign-in
 //    snapshot and goes stale on any role change (threat T5). Every call
-//    re-reads agent_clients.
+//    re-reads the database.
+//
+//  * The VIEWER is re-validated on every call, not just at sign-in. Sessions
+//    are JWTs (auth.ts sets strategy:'jwt'), so they are stateless and cannot
+//    be revoked server-side; without this check a deleted or suspended account
+//    would keep full access until its token expired.
 
 import { sql } from "@/lib/db";
+import { canActAsViewer } from "@/lib/auth-guard";
 
 declare const brand: unique symbol;
 
@@ -35,9 +41,14 @@ export interface Scope {
   /** Whose data this scope authorizes access to. */
   subjectId: SubjectId;
   relation: Relation;
-  /** False for read-only access. Today an agent may edit a client's buy box
-   *  until the relationship is archived; a future "client disconnected but
-   *  agent keeps history" state would land here rather than in call sites. */
+  /**
+   * False for read-only access.
+   *
+   * An agent may edit a client's buy box only while that client is still
+   * agent-managed. Once the client CLAIMS their account (status 'active') they
+   * own their own data and the agent keeps read access — the commitment made
+   * at claim time, recorded in docs/AGENT-ACCOUNTS-PLAN.md §2.
+   */
   canEdit: boolean;
 }
 
@@ -53,21 +64,44 @@ export function systemSubject(id: string): SubjectId {
   return id as SubjectId;
 }
 
-/** Injectable so the decision logic is unit-testable without Postgres. */
-export type ClientLinkLookup = (agentUserId: string, clientUserId: string) => Promise<boolean>;
+/** An active (non-archived) roster row, plus the client's account status. */
+export interface ClientLink {
+  clientStatus: string | null;
+}
 
-/** Is this client on this agent's active (non-archived) roster? */
-const dbClientLink: ClientLinkLookup = async (agentUserId, clientUserId) => {
-  if (!sql) return false;
-  const rows = (await sql`
-    SELECT 1
-    FROM agent_clients
-    WHERE agent_user_id = ${agentUserId}
-      AND client_user_id = ${clientUserId}
-      AND archived_at IS NULL
-    LIMIT 1
-  `) as unknown[];
-  return rows.length > 0;
+/** Injectable so the decision logic is unit-testable without Postgres. */
+export interface ScopeDeps {
+  /** The viewer's account status, or null when no such user exists. */
+  loadViewerStatus(viewerId: string): Promise<{ status: string | null } | null>;
+  /** The active roster row for this pair, or null when there isn't one. */
+  loadClientLink(agentUserId: string, clientUserId: string): Promise<ClientLink | null>;
+}
+
+export const dbScopeDeps: ScopeDeps = {
+  async loadViewerStatus(viewerId) {
+    if (!sql) return null;
+    const rows = (await sql`
+      SELECT status FROM users WHERE id = ${viewerId} LIMIT 1
+    `) as { status: string | null }[];
+    return rows[0] ?? null;
+  },
+
+  async loadClientLink(agentUserId, clientUserId) {
+    if (!sql) return null;
+    // Joining users also proves the client row still exists — an archived
+    // relationship and a deleted client are both simply "no row".
+    const rows = (await sql`
+      SELECT u.status
+      FROM agent_clients ac
+      JOIN users u ON u.id = ac.client_user_id
+      WHERE ac.agent_user_id = ${agentUserId}
+        AND ac.client_user_id = ${clientUserId}
+        AND ac.archived_at IS NULL
+      LIMIT 1
+    `) as { status: string | null }[];
+    const row = rows[0];
+    return row ? { clientStatus: row.status } : null;
+  },
 };
 
 /**
@@ -81,9 +115,15 @@ const dbClientLink: ClientLinkLookup = async (agentUserId, clientUserId) => {
 export async function resolveScope(
   viewerId: string,
   requestedSubjectId?: string | null,
-  lookup: ClientLinkLookup = dbClientLink,
+  deps: ScopeDeps = dbScopeDeps,
 ): Promise<Scope | null> {
   if (!viewerId) return null;
+
+  // Revocation. A JWT outlives any change to the underlying row, so a viewer
+  // that has been deleted, suspended, or converted to an agent-managed account
+  // must lose access here rather than at token expiry.
+  const viewer = await deps.loadViewerStatus(viewerId);
+  if (!viewer || !canActAsViewer(viewer.status)) return null;
 
   // Default to self. An explicit id equal to the viewer's is the same case.
   if (!requestedSubjectId || requestedSubjectId === viewerId) {
@@ -95,13 +135,14 @@ export async function resolveScope(
     };
   }
 
-  const linked = await lookup(viewerId, requestedSubjectId);
-  if (!linked) return null;
+  const link = await deps.loadClientLink(viewerId, requestedSubjectId);
+  if (!link) return null;
 
   return {
     viewerId,
     subjectId: requestedSubjectId as SubjectId,
     relation: "agent_of_client",
-    canEdit: true,
+    // A claimed client owns their own data; the agent drops to read-only.
+    canEdit: link.clientStatus !== "active",
   };
 }
