@@ -1,23 +1,24 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { resolveRequestScope } from "@/lib/request-scope";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import TelegramConnectCard from "@/components/TelegramConnectCard";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
 import SettingsForm from "@/components/SettingsForm";
 
 export default async function SettingsPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
+  const scoped = await resolveRequestScope();
+  // Unauthenticated, or an account revoked after its JWT was issued — both
+  // go back to login. Only a missing database falls through to the shell.
+  if (!scoped.ok && scoped.reason !== "no_db") {
     redirect("/login");
   }
 
-  const userId = session.user.id;
-  const userName = session.user.name ?? "there";
-  const dbReady = hasDb();
-  const profile = dbReady ? await new PgStore().loadProfile(userId) : null;
+  const userName = scoped.userName;
+  const dbReady = scoped.ok;
+  const profile = scoped.ok ? await scoped.store.loadProfile() : null;
+  // The Telegram deep link binds a chat to the profile being viewed, so it
+  // carries the SUBJECT's id, not the viewer's.
+  const subjectId = scoped.ok ? scoped.scope.subjectId : "";
 
   if (profile && profile.onboarded === false) {
     redirect("/onboarding");
@@ -56,7 +57,7 @@ export default async function SettingsPage() {
         ) : (
           <>
             <SettingsForm profile={profile} />
-            <TelegramConnectCard userId={userId} telegramChatId={profile.telegramChatId ?? null} />
+            <TelegramConnectCard userId={subjectId} telegramChatId={profile.telegramChatId ?? null} />
           </>
         )}
       </section>

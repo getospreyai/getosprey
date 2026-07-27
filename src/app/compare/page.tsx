@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { resolveRequestScope } from "@/lib/request-scope";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import LegalDisclaimer from "@/components/LegalDisclaimer";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
 import { bestUnderwriting } from "@/lib/best-underwriting";
 import { formatMoney, formatPct, formatSignedMonthly } from "@/lib/format";
 import { project, toIncomeInput, toPropertyInput, type Underwriting } from "@/osprey/engine";
@@ -28,14 +26,15 @@ export default async function ComparePage({
 }) {
   const { ids: idsParam } = await searchParams;
 
-  const session = await auth();
-  if (!session?.user?.id) {
+  const scoped = await resolveRequestScope();
+  // Unauthenticated, or an account revoked after its JWT was issued — both go
+  // back to login. Only a missing database falls through to the shell below.
+  if (!scoped.ok && scoped.reason !== "no_db") {
     redirect("/login");
   }
 
-  const userId = session.user.id;
-  const userName = session.user.name ?? "there";
-  const dbReady = hasDb();
+  const userName = scoped.userName;
+  const dbReady = scoped.ok;
 
   const ids = Array.from(new Set((idsParam ?? "").split(",").map((s) => s.trim()).filter(Boolean)));
 
@@ -59,8 +58,8 @@ export default async function ComparePage({
     );
   }
 
-  const store = new PgStore();
-  const profile = await store.loadProfile(userId);
+  const store = scoped.store;
+  const profile = await store.loadProfile();
   if (profile && profile.onboarded === false) {
     redirect("/onboarding");
   }
@@ -78,7 +77,7 @@ export default async function ComparePage({
   const skipped: string[] = [];
 
   for (const listingId of ids) {
-    const verdict = await store.loadVerdictForListing(userId, listingId);
+    const verdict = await store.loadVerdictForListing(listingId);
     if (!verdict) {
       skipped.push(listingId);
       continue;

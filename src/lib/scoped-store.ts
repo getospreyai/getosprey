@@ -130,6 +130,14 @@ export class ScopedStore {
     return this.store.listShareLinks(this.scope.subjectId);
   }
 
+  /** Append a verdict to the subject's ledger. investorId is forced to the
+   *  authorized subject: the record is assembled from engine output, and a
+   *  mismatched id would write into someone else's feed. */
+  async appendVerdict(record: VerdictRecord): Promise<void> {
+    this.assertWritable();
+    return this.store.appendVerdict({ ...record, investorId: this.scope.subjectId });
+  }
+
   // --- Unscoped passthroughs ----------------------------------------------
   // Listing snapshots and price history are properties of a LISTING, not of a
   // user, so they carry no per-user authorization. Access to the page that
@@ -141,6 +149,20 @@ export class ScopedStore {
 
   loadEventsForListing(listingId: string) {
     return this.store.loadEventsForListing(listingId);
+  }
+
+  /** Listing snapshots are shared across all users — cached RentCast payloads
+   *  keyed by listing, carrying no per-user data. */
+  saveSnapshot(
+    ...args: Parameters<PgStore["saveSnapshot"]>
+  ): ReturnType<PgStore["saveSnapshot"]> {
+    return this.store.saveSnapshot(...args);
+  }
+
+  /** Keyed by Telegram chat + message, not by user. The chat binding itself is
+   *  owned by the webhook's /start flow. */
+  saveTgAnchor(chatId: number, messageId: number, listingId: string): Promise<void> {
+    return this.store.saveTgAnchor(chatId, messageId, listingId);
   }
 }
 

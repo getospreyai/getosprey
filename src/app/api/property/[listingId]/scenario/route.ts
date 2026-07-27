@@ -3,10 +3,8 @@
 // persisted RentCast payloads — no LLM, no external calls, no writes.
 
 import { NextRequest, NextResponse } from "next/server";
+import { resolveRequestScope } from "@/lib/request-scope";
 import { z } from "zod";
-import { auth } from "@/auth";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
 import { AssumptionsSchema, FinancingProfileSchema } from "@/lib/profile-schema";
 import { listingIdFromParam } from "@/lib/listing-param";
 import {
@@ -38,17 +36,15 @@ export async function POST(
 ) {
   const listingId = listingIdFromParam((await ctx.params).listingId);
 
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
+  const scoped = await resolveRequestScope();
+  if (!scoped.ok) {
+    if (scoped.reason === "no_db") {
+      return NextResponse.json(
+        { error: "Modeling is temporarily unavailable. Please try again later." },
+        { status: 503, ...NO_STORE },
+      );
+    }
     return NextResponse.json({ error: "Unauthorized." }, { status: 401, ...NO_STORE });
-  }
-
-  if (!hasDb()) {
-    return NextResponse.json(
-      { error: "Modeling is temporarily unavailable. Please try again later." },
-      { status: 503, ...NO_STORE },
-    );
   }
 
   const body = await req.json().catch(() => null);
@@ -60,10 +56,10 @@ export async function POST(
     );
   }
 
-  const store = new PgStore();
+  const { store } = scoped;
 
   // Authorization: you can only model properties from your own feed.
-  const verdict = await store.loadVerdictForListing(userId, listingId);
+  const verdict = await store.loadVerdictForListing(listingId);
   if (!verdict) {
     return NextResponse.json({ error: "forbidden" }, { status: 403, ...NO_STORE });
   }
@@ -94,7 +90,7 @@ export async function POST(
   }
 
   // Merge scenario assumption overrides over the user's profile assumptions.
-  const profile = await store.loadProfile(userId);
+  const profile = await store.loadProfile();
   const mergedAssumptions = { ...profile?.assumptions, ...assumptions };
 
   const underwriting = underwrite({

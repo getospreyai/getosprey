@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { resolveRequestScope } from "@/lib/request-scope";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import TelegramConnectCard from "@/components/TelegramConnectCard";
 import VerdictList from "@/components/VerdictList";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
 import type { InvestorProfile, BuyBox } from "@/osprey/agent/model";
 import type { VerdictRecord } from "@/osprey/agent/loop";
 import type { PropertyType } from "@/osprey/engine/types";
@@ -41,24 +39,26 @@ function summarizePrice(buyBox: BuyBox): string {
 }
 
 export default async function DashboardPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
+  const scoped = await resolveRequestScope();
+  // Unauthenticated, or an account revoked after its JWT was issued — both go
+  // back to login. Only a missing database falls through to the shell below.
+  if (!scoped.ok && scoped.reason !== "no_db") {
     redirect("/login");
   }
 
-  const userId = session.user.id;
-  const userName = session.user.name ?? "there";
-  const dbReady = hasDb();
+  const userName = scoped.userName;
+  const dbReady = scoped.ok;
+  // Telegram deep links bind a chat to the profile being viewed, so they
+  // carry the SUBJECT's id, not the viewer's.
+  const subjectId = scoped.ok ? scoped.scope.subjectId : "";
 
   let profile: InvestorProfile | null = null;
   let verdicts: VerdictRecord[] = [];
 
-  if (dbReady) {
-    const store = new PgStore();
+  if (scoped.ok) {
     [profile, verdicts] = await Promise.all([
-      store.loadProfile(userId),
-      store.loadRecentVerdicts<VerdictRecord>(userId, 50),
+      scoped.store.loadProfile(),
+      scoped.store.loadRecentVerdicts(50),
     ]);
   }
 
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
               )}
             </div>
 
-            <TelegramConnectCard userId={userId} telegramChatId={profile.telegramChatId ?? null} />
+            <TelegramConnectCard userId={subjectId} telegramChatId={profile.telegramChatId ?? null} />
 
             {profile.tasteNotes && profile.tasteNotes.length > 0 && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md">
@@ -150,7 +150,7 @@ export default async function DashboardPage() {
                     Osprey scans daily; connect Telegram so verdicts reach you.
                   </p>
                   <a
-                    href={`https://t.me/OspreyAlphaBot?start=${userId}`}
+                    href={`https://t.me/OspreyAlphaBot?start=${subjectId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-4 inline-block rounded-full bg-violet-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-violet-400"

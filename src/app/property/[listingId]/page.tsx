@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { resolveRequestScope } from "@/lib/request-scope";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import UnderwritingBreakdown from "@/components/UnderwritingBreakdown";
@@ -14,8 +14,6 @@ import ScenarioStudio from "@/components/ScenarioStudio";
 import ReportPanel from "@/components/ReportPanel";
 import ShareCard from "@/components/ShareCard";
 import LegalDisclaimer from "@/components/LegalDisclaimer";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
 import { bestUnderwriting } from "@/lib/best-underwriting";
 import { computePropertyInsights } from "@/lib/property-insights";
 import { PROPERTY_TYPE_LABELS } from "@/lib/property-labels";
@@ -33,14 +31,15 @@ export default async function PropertyPage({
 }) {
   const listingId = listingIdFromParam((await params).listingId);
 
-  const session = await auth();
-  if (!session?.user?.id) {
+  const scoped = await resolveRequestScope();
+  // Unauthenticated, or an account revoked after its JWT was issued — both go
+  // back to login. Only a missing database falls through to the shell below.
+  if (!scoped.ok && scoped.reason !== "no_db") {
     redirect("/login");
   }
 
-  const userId = session.user.id;
-  const userName = session.user.name ?? "there";
-  const dbReady = hasDb();
+  const userName = scoped.userName;
+  const dbReady = scoped.ok;
 
   if (!dbReady) {
     return (
@@ -55,10 +54,10 @@ export default async function PropertyPage({
     );
   }
 
-  const store = new PgStore();
+  const store = scoped.store;
   const [profile, verdict] = await Promise.all([
-    store.loadProfile(userId),
-    store.loadVerdictForListing(userId, listingId),
+    store.loadProfile(),
+    store.loadVerdictForListing(listingId),
   ]);
 
   if (profile && profile.onboarded === false) {
@@ -99,8 +98,8 @@ export default async function PropertyPage({
 
   const [snapshot, reportRow, shareLinks, events] = await Promise.all([
     store.loadSnapshot(listingId),
-    store.getReport(userId, listingId),
-    store.listShareLinks(userId),
+    store.getReport(listingId),
+    store.listShareLinks(),
     store.loadEventsForListing(listingId),
   ]);
 

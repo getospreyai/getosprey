@@ -7,9 +7,7 @@
 // wizard.
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
+import { resolveRequestScope } from "@/lib/request-scope";
 import { PatchProfileSchema, mergeProfileSettings } from "@/lib/profile-schema";
 
 // The onboarding wizard polls GET to detect the Telegram binding — the
@@ -19,21 +17,21 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { headers: { "Cache-Control": "no-store, max-age=0" } };
 
 export async function GET() {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
+  const scoped = await resolveRequestScope();
+  if (!scoped.ok) {
+    if (scoped.reason === "no_db") {
+      return NextResponse.json(
+        { error: "Settings are temporarily unavailable. Please try again later." },
+        { status: 503 }
+      );
+    }
+    // `forbidden` here means the viewer's own account was revoked after their
+    // JWT was issued — same 401 as never having been signed in.
     return NextResponse.json({ error: "Unauthorized." }, { status: 401, ...NO_STORE });
   }
 
-  if (!hasDb()) {
-    return NextResponse.json(
-      { error: "Settings are temporarily unavailable. Please try again later." },
-      { status: 503 }
-    );
-  }
-
-  const store = new PgStore();
-  const profile = await store.loadProfile(userId);
+  const { store } = scoped;
+  const profile = await store.loadProfile();
   if (!profile) {
     return NextResponse.json({ error: "Profile not found." }, { status: 404, ...NO_STORE });
   }
@@ -42,17 +40,15 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
+  const scoped = await resolveRequestScope();
+  if (!scoped.ok) {
+    if (scoped.reason === "no_db") {
+      return NextResponse.json(
+        { error: "Settings are temporarily unavailable. Please try again later." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
-  if (!hasDb()) {
-    return NextResponse.json(
-      { error: "Settings are temporarily unavailable. Please try again later." },
-      { status: 503 }
-    );
   }
 
   const body = await req.json().catch(() => null);
@@ -64,8 +60,8 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const store = new PgStore();
-  const stored = await store.loadProfile(userId);
+  const { store } = scoped;
+  const stored = await store.loadProfile();
   if (!stored) {
     return NextResponse.json({ error: "Profile not found." }, { status: 404 });
   }

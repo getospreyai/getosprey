@@ -4,9 +4,7 @@
 // verdict-ownership gated, same pattern as the scenario/share routes.
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
+import { resolveRequestScope } from "@/lib/request-scope";
 import { bestUnderwriting } from "@/lib/best-underwriting";
 import { computePropertyInsights } from "@/lib/property-insights";
 import { listingIdFromParam } from "@/lib/listing-param";
@@ -21,30 +19,28 @@ export async function GET(
 ) {
   const listingId = listingIdFromParam((await ctx.params).listingId);
 
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
+  const scoped = await resolveRequestScope();
+  if (!scoped.ok) {
+    if (scoped.reason === "no_db") {
+      return NextResponse.json(
+        { error: "Packets are temporarily unavailable. Please try again later." },
+        { status: 503, ...NO_STORE },
+      );
+    }
     return NextResponse.json({ error: "Unauthorized." }, { status: 401, ...NO_STORE });
   }
 
-  if (!hasDb()) {
-    return NextResponse.json(
-      { error: "Packets are temporarily unavailable. Please try again later." },
-      { status: 503, ...NO_STORE },
-    );
-  }
-
-  const store = new PgStore();
+  const { store } = scoped;
 
   // Authorization: you can only pull a packet for a property from your own feed.
-  const verdict = await store.loadVerdictForListing(userId, listingId);
+  const verdict = await store.loadVerdictForListing(listingId);
   if (!verdict) {
     return NextResponse.json({ error: "forbidden" }, { status: 403, ...NO_STORE });
   }
 
   const [snapshot, profile] = await Promise.all([
     store.loadSnapshot(listingId),
-    store.loadProfile(userId),
+    store.loadProfile(),
   ]);
   if (!snapshot) {
     return NextResponse.json({ error: "no_snapshot" }, { status: 404, ...NO_STORE });

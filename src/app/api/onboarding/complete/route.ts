@@ -9,9 +9,8 @@
 // listings this user has already "seen" via onboarding.
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { ensureSchema, hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
+import { resolveRequestScope } from "@/lib/request-scope";
+import { ensureSchema } from "@/lib/db";
 import { PatchProfileSchema, mergeProfileSettings } from "@/lib/profile-schema";
 import { RentCastClient } from "@/osprey/engine";
 import { fetchBatch, fetchRentFor } from "@/osprey/agent/watcher";
@@ -25,17 +24,15 @@ export const maxDuration = 60;
 const INITIAL_SCAN_LIMIT = 30;
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
+  const scoped = await resolveRequestScope();
+  if (!scoped.ok) {
+    if (scoped.reason === "no_db") {
+      return NextResponse.json(
+        { error: "Onboarding is temporarily unavailable. Please try again later." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
-  if (!hasDb()) {
-    return NextResponse.json(
-      { error: "Onboarding is temporarily unavailable. Please try again later." },
-      { status: 503 }
-    );
   }
 
   const body = await req.json().catch(() => null);
@@ -57,8 +54,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const store = new PgStore();
-  const stored = await store.loadProfile(userId);
+  const { store, scope } = scoped;
+  const stored = await store.loadProfile();
   if (!stored) {
     return NextResponse.json({ error: "Profile not found." }, { status: 404 });
   }
@@ -76,7 +73,7 @@ export async function POST(req: NextRequest) {
 
   // Re-read the binding after the save: the user may have tapped /start in
   // Telegram seconds ago, and the scan below should deliver to them if so.
-  profile.telegramChatId = (await store.loadProfile(userId))?.telegramChatId ?? null;
+  profile.telegramChatId = (await store.loadProfile())?.telegramChatId ?? null;
 
   // Opt-in gate: scans are paused until RENTCAST_ENABLED=true. The profile
   // above is still fully validated, saved, and marked onboarded — only the
@@ -124,7 +121,7 @@ export async function POST(req: NextRequest) {
             });
             if (messageId != null) await store.saveTgAnchor(chatId, messageId, record.listingId);
           } catch (err) {
-            console.error(`Onboarding scan: telegram send failed (${userId}):`, err);
+            console.error(`Onboarding scan: telegram send failed (${scope.subjectId}):`, err);
           }
         },
       }

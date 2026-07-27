@@ -1,20 +1,21 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { resolveRequestScope } from "@/lib/request-scope";
 import Backdrop from "@/components/Backdrop";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
 import OnboardingWizard from "@/components/OnboardingWizard";
 
 export default async function OnboardingPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
+  const scoped = await resolveRequestScope();
+  // Unauthenticated, or an account revoked after its JWT was issued — both go
+  // back to login. Only a missing database falls through to the shell.
+  if (!scoped.ok && scoped.reason !== "no_db") {
     redirect("/login");
   }
 
-  const userId = session.user.id;
-  const dbReady = hasDb();
-  const profile = dbReady ? await new PgStore().loadProfile(userId) : null;
+  const dbReady = scoped.ok;
+  const profile = scoped.ok ? await scoped.store.loadProfile() : null;
+  // The wizard's Telegram deep link binds a chat to the profile being set
+  // up, so it carries the SUBJECT's id, not the viewer's.
+  const subjectId = scoped.ok ? scoped.scope.subjectId : "";
 
   if (profile?.onboarded === true) {
     redirect("/dashboard");
@@ -44,7 +45,7 @@ export default async function OnboardingPage() {
           </div>
         ) : (
           <OnboardingWizard
-            userId={userId}
+            userId={subjectId}
             initialConnected={profile.telegramChatId != null}
             saved={{
               city: (profile.buyBox.cities ?? [])[0] ?? "",

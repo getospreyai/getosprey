@@ -2,9 +2,7 @@
 // report JSON deterministically (no LLM) — 404s when no ready report exists.
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { hasDb } from "@/lib/db";
-import { PgStore } from "@/osprey/pg-store";
+import { resolveRequestScope } from "@/lib/request-scope";
 import { ReportSchema } from "@/osprey/reports/generate";
 import { reportToPdf } from "@/osprey/reports/pdf";
 import { listingIdFromParam } from "@/lib/listing-param";
@@ -17,22 +15,20 @@ export async function GET(
 ) {
   const listingId = listingIdFromParam((await ctx.params).listingId);
 
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
+  const scoped = await resolveRequestScope();
+  if (!scoped.ok) {
+    if (scoped.reason === "no_db") {
+      return NextResponse.json(
+        { error: "Reports are temporarily unavailable. Please try again later." },
+        { status: 503, ...NO_STORE },
+      );
+    }
     return NextResponse.json({ error: "Unauthorized." }, { status: 401, ...NO_STORE });
   }
 
-  if (!hasDb()) {
-    return NextResponse.json(
-      { error: "Reports are temporarily unavailable. Please try again later." },
-      { status: 503, ...NO_STORE },
-    );
-  }
+  const { store } = scoped;
 
-  const store = new PgStore();
-
-  const row = await store.getReport(userId, listingId);
+  const row = await store.getReport(listingId);
   if (!row || row.status !== "ready" || !row.report) {
     return NextResponse.json({ error: "no_report" }, { status: 404, ...NO_STORE });
   }
@@ -42,7 +38,7 @@ export async function GET(
   }
 
   const snapshot = await store.loadSnapshot(listingId);
-  const profile = await store.loadProfile(userId);
+  const profile = await store.loadProfile();
   const address =
     snapshot?.listing.formattedAddress ??
     snapshot?.listing.addressLine1 ??
