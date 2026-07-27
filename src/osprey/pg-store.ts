@@ -506,6 +506,290 @@ export class PgStore implements Store {
     return new Map(rows.map((r) => [r.user_id, r.record]));
   }
 
+  // --- Agent accounts, phase 2: invites, claiming, consent -----------------
+
+  /**
+   * Mint an invite for a managed client.
+   *
+   * Three statements, in this order, atomically:
+   *   1. revoke any outstanding invite for this client — an agent who clicks
+   *      "invite" four times should end up with one usable link, not four
+   *      independent theft targets. This MUST precede the insert or the
+   *      client_invites_one_outstanding partial index rejects it.
+   *   2. insert the new row (hash only; the token itself never arrives here).
+   *   3. move the client to 'invited' so the roster badge tells the truth.
+   *
+   * Statement 3 is guarded on status = 'managed' rather than being
+   * unconditional: a client who has already claimed must not be dragged back
+   * to 'invited' by a stale request, which would strip their own login.
+   */
+  async mintInvite(params: {
+    agentUserId: string;
+    clientUserId: string;
+    email: string;
+    tokenHash: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const db = requireSql();
+    await db.transaction([
+      db`
+        UPDATE client_invites
+           SET revoked_at = now()
+         WHERE client_user_id = ${params.clientUserId}
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+      `,
+      db`
+        INSERT INTO client_invites
+          (token_hash, agent_user_id, client_user_id, email, expires_at)
+        VALUES
+          (${params.tokenHash}, ${params.agentUserId}, ${params.clientUserId},
+           ${params.email}, ${params.expiresAt.toISOString()})
+      `,
+      db`
+        UPDATE users SET status = 'invited'
+         WHERE id = ${params.clientUserId} AND status = 'managed'
+      `,
+    ]);
+  }
+
+  /**
+   * Revoke the outstanding invite for a client and put them back to 'managed'.
+   *
+   * The status revert is guarded on 'invited' so revoking a spent invite can
+   * never demote a client who has already claimed their account.
+   */
+  async revokeInvite(clientUserId: string): Promise<void> {
+    const db = requireSql();
+    await db.transaction([
+      db`
+        UPDATE client_invites
+           SET revoked_at = now()
+         WHERE client_user_id = ${clientUserId}
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+      `,
+      db`
+        UPDATE users SET status = 'managed'
+         WHERE id = ${clientUserId} AND status = 'invited'
+      `,
+    ]);
+  }
+
+  /**
+   * What the public claim page needs to render, or null.
+   *
+   * Read-only and deliberately thin: it returns the two display names and
+   * nothing else about the client. The caller renders ONE identical dead-link
+   * state for every failure — expired, revoked, accepted, malformed, never
+   * existed — so this must not hand back anything that could distinguish them
+   * (docs/AGENT-ACCOUNTS-PLAN.md §3a T4).
+   */
+  async loadInviteForClaim(tokenHash: string): Promise<{
+    agentUserId: string;
+    clientUserId: string;
+    agentName: string;
+    clientName: string;
+    email: string;
+  } | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT i.agent_user_id, i.client_user_id, i.email,
+             a.name AS agent_name, c.name AS client_name
+      FROM client_invites i
+      JOIN users a ON a.id = i.agent_user_id
+      JOIN users c ON c.id = i.client_user_id
+      WHERE i.token_hash  = ${tokenHash}
+        AND i.accepted_at IS NULL
+        AND i.revoked_at  IS NULL
+        AND i.expires_at  > now()
+        AND c.status      = 'invited'
+      LIMIT 1
+    `) as {
+      agent_user_id: string;
+      client_user_id: string;
+      email: string;
+      agent_name: string;
+      client_name: string;
+    }[];
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      agentUserId: row.agent_user_id,
+      clientUserId: row.client_user_id,
+      agentName: row.agent_name,
+      clientName: row.client_name,
+      email: row.email,
+    };
+  }
+
+  /**
+   * Consume an invite and claim the account. THE security-critical write.
+   *
+   * One statement, not a transaction of several, because the single-use
+   * guarantee has to be a property of the database rather than of this
+   * process. The `claimed` CTE's WHERE clause IS the validity check, so two
+   * simultaneous clicks on the same link contend on the same row and exactly
+   * one wins — no application-level locking, no read-then-write window.
+   * Everything downstream is chained off `claimed`, so when it matches nothing
+   * the rest of the statement touches nothing.
+   *
+   * Being one statement also means a UNIQUE violation on users.email (the
+   * claimer typed an address that already has an Osprey account) rolls the
+   * whole thing back and leaves the invite OUTSTANDING — so they can retry
+   * with a different address rather than being locked out by a link that is
+   * now spent. The caller still reports that failure generically; see the
+   * route for why naming it would be an enumeration oracle.
+   *
+   * Returns null when the invite was not usable. The caller must not
+   * distinguish that from any other failure in what it renders.
+   */
+  async claimInvite(params: {
+    tokenHash: string;
+    email: string;
+    passwordHash: string;
+    policyVersion: string;
+    disclosure: string;
+  }): Promise<{ clientUserId: string; agentUserId: string } | null> {
+    const db = requireSql();
+    const rows = (await db`
+      WITH claimed AS (
+        UPDATE client_invites
+           SET accepted_at = now()
+         WHERE token_hash  = ${params.tokenHash}
+           AND accepted_at IS NULL
+           AND revoked_at  IS NULL
+           AND expires_at  > now()
+        RETURNING agent_user_id, client_user_id
+      ),
+      promoted AS (
+        UPDATE users u
+           SET email         = ${params.email},
+               password_hash = ${params.passwordHash},
+               status        = 'active'
+          FROM claimed c
+         WHERE u.id = c.client_user_id
+           AND u.status = 'invited'
+        RETURNING u.id
+      ),
+      labelled AS (
+        UPDATE investor_profiles ip
+           SET profile = jsonb_set(ip.profile, '{setUpByAgent}', 'true'::jsonb, true)
+          FROM promoted p
+         WHERE ip.user_id = p.id
+        RETURNING ip.user_id
+      ),
+      consented AS (
+        INSERT INTO client_consents
+          (user_id, agent_user_id, kind, policy_version, disclosure)
+        SELECT c.client_user_id, c.agent_user_id, 'agent_access',
+               ${params.policyVersion}, ${params.disclosure}
+        FROM claimed c
+        JOIN promoted p ON p.id = c.client_user_id
+        RETURNING id
+      )
+      SELECT c.client_user_id, c.agent_user_id,
+             (SELECT count(*) FROM promoted)  AS promoted_count,
+             (SELECT count(*) FROM consented) AS consented_count,
+             (SELECT count(*) FROM labelled)  AS labelled_count
+      FROM claimed c
+    `) as {
+      client_user_id: string;
+      agent_user_id: string;
+      promoted_count: number;
+      consented_count: number;
+      labelled_count: number;
+    }[];
+
+    const row = rows[0];
+    if (!row) return null;
+
+    // The invite was usable but the user row was not 'invited', or consent did
+    // not record. Both are invariant violations rather than ordinary failures —
+    // mintInvite() sets 'invited' in the same transaction that creates the
+    // invite, so they should be unreachable. Refuse loudly in the log and
+    // generically to the caller rather than reporting a claim that did not
+    // fully happen.
+    if (Number(row.promoted_count) === 0 || Number(row.consented_count) === 0) {
+      console.error(
+        "claimInvite: invite consumed but claim incomplete",
+        {
+          clientUserId: row.client_user_id,
+          promoted: Number(row.promoted_count),
+          consented: Number(row.consented_count),
+          labelled: Number(row.labelled_count),
+        },
+      );
+      return null;
+    }
+
+    return { clientUserId: row.client_user_id, agentUserId: row.agent_user_id };
+  }
+
+  /** The agent currently holding an active roster row for this user, if any.
+   *  Drives the disconnect control in Settings. */
+  async loadActiveAgentForClient(clientUserId: string): Promise<{
+    agentUserId: string;
+    agentName: string;
+  } | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT ac.agent_user_id, u.name AS agent_name
+      FROM agent_clients ac
+      JOIN users u ON u.id = ac.agent_user_id
+      WHERE ac.client_user_id = ${clientUserId}
+        AND ac.archived_at IS NULL
+      LIMIT 1
+    `) as { agent_user_id: string; agent_name: string }[];
+    const row = rows[0];
+    return row ? { agentUserId: row.agent_user_id, agentName: row.agent_name } : null;
+  }
+
+  /**
+   * End the agent relationship, and record why.
+   *
+   * `archived_at` is the only thing resolveScope() consults, so setting it
+   * revokes the agent on their very next request — threat T8, handled by code
+   * that already existed before Phase 2. Any outstanding invite is revoked in
+   * the same transaction: a live token that outlives the relationship it was
+   * minted under would silently re-create it on click.
+   *
+   * `reason` distinguishes a client who chose to leave from one moved out
+   * automatically by the farm-market rule. Both are withdrawals of the agent's
+   * access and both belong in the append-only consent ledger.
+   */
+  async disconnectAgent(params: {
+    clientUserId: string;
+    agentUserId: string;
+    policyVersion: string;
+    reason: string;
+  }): Promise<void> {
+    const db = requireSql();
+    await db.transaction([
+      db`
+        UPDATE agent_clients
+           SET archived_at = now()
+         WHERE client_user_id = ${params.clientUserId}
+           AND agent_user_id  = ${params.agentUserId}
+           AND archived_at IS NULL
+      `,
+      db`
+        UPDATE client_invites
+           SET revoked_at = now()
+         WHERE client_user_id = ${params.clientUserId}
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+      `,
+      db`
+        INSERT INTO client_consents
+          (user_id, agent_user_id, kind, policy_version, disclosure)
+        VALUES
+          (${params.clientUserId}, ${params.agentUserId}, 'withdraw',
+           ${params.policyVersion}, ${params.reason})
+      `,
+    ]);
+  }
+
   async loadSnapshot(listingId: string): Promise<ListingSnapshot | null> {
     const db = requireSql();
     const rows = (await db`
