@@ -250,6 +250,101 @@ export async function ensureSchema(): Promise<void> {
       END $$
     `,
 
+    // -------------------------------------------------------------------------
+    // Agent accounts, phase 2 (2026-07-27). Invite links + claiming.
+    // See docs/PHASE-2-INVITES-PLAN.md.
+    // -------------------------------------------------------------------------
+
+    // Per-client invite tokens. The agent mints one and delivers it themselves
+    // through whatever channel they already use with that client — Osprey sends
+    // no email (docs/AGENT-ACCOUNTS-PLAN.md §9), which is what keeps CAN-SPAM,
+    // deliverability, and the invite-spam vector out of the product entirely.
+    //
+    // token_hash, NOT the token. A raw invite token is a bearer credential for
+    // becoming someone else's account: anything that can read this table — a
+    // backup, a slow-query log, a Neon branch handed to a contractor — would
+    // otherwise be account takeover for every outstanding invite. Storing
+    // sha256 makes the table useless to a reader.
+    //
+    // Plain sha256 with no salt or KDF is correct HERE specifically because the
+    // token is 256 bits of CSPRNG output: there is no dictionary to attack, so
+    // the slow-hash argument that applies to passwords does not apply. Do not
+    // "upgrade" this to bcrypt — its 72-byte truncation and cost factor buy
+    // nothing against a random 256-bit secret.
+    sql`
+      CREATE TABLE IF NOT EXISTS client_invites (
+        id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        token_hash     TEXT NOT NULL UNIQUE,
+        agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        email          TEXT NOT NULL,
+        expires_at     TIMESTAMPTZ NOT NULL,
+        accepted_at    TIMESTAMPTZ,
+        revoked_at     TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ DEFAULT now()
+      )
+    `,
+
+    sql`
+      CREATE INDEX IF NOT EXISTS client_invites_agent_idx
+        ON client_invites (agent_user_id)
+    `,
+    sql`
+      CREATE INDEX IF NOT EXISTS client_invites_client_idx
+        ON client_invites (client_user_id)
+    `,
+
+    // At most one outstanding invite per client. Every live token is an
+    // independent theft target, so an agent who clicks "invite" four times
+    // should end up with one usable link, not four.
+    sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS client_invites_one_outstanding
+        ON client_invites (client_user_id)
+        WHERE accepted_at IS NULL AND revoked_at IS NULL
+    `,
+
+    // The recorded consent required by ship gate #5.
+    //
+    // APPEND-ONLY. A withdrawal is a new row (kind 'withdraw'), never an UPDATE
+    // or DELETE, because the question this table answers is "what did they
+    // agree to, and when" — which a mutable row cannot answer after the fact.
+    //
+    // `disclosure` stores the text shown VERBATIM rather than a reference to
+    // it. A pointer to copy that lives in a .tsx file is worthless a year later
+    // when the copy has changed; the record has to be self-contained to be
+    // evidence of anything. A few hundred bytes per claim.
+    //
+    // Deliberately NOT stored: IP address and user-agent. They are tempting as
+    // "proof", but they are additional personal data collected at the exact
+    // moment we are promising a minimal-collection posture, and Privacy Policy
+    // §2 does not disclose collecting them for this purpose. If legal review
+    // asks for them, they get added here and to the policy together.
+    sql`
+      CREATE TABLE IF NOT EXISTS client_consents (
+        id             BIGSERIAL PRIMARY KEY,
+        user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind           TEXT NOT NULL,
+        policy_version TEXT NOT NULL,
+        disclosure     TEXT NOT NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `,
+
+    sql`
+      CREATE INDEX IF NOT EXISTS client_consents_user_idx
+        ON client_consents (user_id, created_at DESC)
+    `,
+
+    sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'client_consents_kind_check') THEN
+          ALTER TABLE client_consents ADD CONSTRAINT client_consents_kind_check
+            CHECK (kind IN ('agent_access', 'withdraw'));
+        END IF;
+      END $$
+    `,
+
   ]);
 
   schemaReady = true;

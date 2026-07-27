@@ -36,6 +36,15 @@ const EXPECTED = [
   ["agent_clients", "agent_user_id"],
   ["agent_clients", "client_user_id"],
   ["agent_clients", "archived_at"],
+  // Wave: agent accounts phase 2 (2026-07-27) — invites + claiming.
+  // token_hash and NOT token: if a column named `token` ever shows up on this
+  // table, the raw-token version got resurrected. See docs/PHASE-2-INVITES-PLAN.md §3.1.
+  ["client_invites", "token_hash"],
+  ["client_invites", "expires_at"],
+  ["client_invites", "accepted_at"],
+  ["client_invites", "revoked_at"],
+  ["client_consents", "policy_version"],
+  ["client_consents", "disclosure"],
   // Pre-existing core columns, as a sanity check that we are pointed at a real
   // Osprey database and not an empty one.
   ["users", "email"],
@@ -48,8 +57,25 @@ const EXPECTED = [
  *  explodes in production. */
 const EXPECTED_NULLABLE = [["users", "password_hash"]];
 
+/** Columns that must NOT exist — a schema assertion in the negative.
+ *
+ *  client_invites.token would mean the raw-token design came back: invite
+ *  tokens are bearer credentials for becoming another user's account, so the
+ *  database stores sha256(token) and never the token itself
+ *  (docs/PHASE-2-INVITES-PLAN.md §3.1). A well-meaning "add the token back so
+ *  agents can re-copy the link" change would silently reintroduce that, and
+ *  nothing else in the codebase would fail. This is the check that would. */
+const FORBIDDEN = [["client_invites", "token"]];
+
 /** Tables whose row counts are worth seeing before/after a migration. */
-const COUNT_TABLES = ["users", "investor_profiles", "verdicts", "scan_runs"];
+const COUNT_TABLES = [
+  "users",
+  "investor_profiles",
+  "verdicts",
+  "scan_runs",
+  "client_invites",
+  "client_consents",
+];
 
 const useBranch = process.argv.includes("--branch");
 /** Which .env.local key to read. --branch targets a Neon branch so a migration
@@ -119,6 +145,17 @@ for (const [table, column] of EXPECTED_NULLABLE) {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}  (${detail})`);
 }
 
+// A column that should not be there is a different failure again: nothing is
+// broken today, but a security property the code depends on has quietly gone.
+let forbidden = 0;
+console.log("\nMust NOT exist:");
+for (const [table, column] of FORBIDDEN) {
+  const key = `${table}.${column}`;
+  const ok = !present.has(key);
+  if (!ok) forbidden++;
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}${ok ? "  (absent)" : "  PRESENT — see PHASE-2-INVITES-PLAN.md §3.1"}`);
+}
+
 console.log("\nRow counts:");
 for (const table of COUNT_TABLES) {
   if (!rows.some((r) => r.table_name === table)) {
@@ -132,12 +169,18 @@ for (const table of COUNT_TABLES) {
   console.log(`  ${String(n).padStart(6)}  ${table}`);
 }
 
-if (missing > 0 || notNullable > 0) {
+if (missing > 0 || notNullable > 0 || forbidden > 0) {
   const parts = [];
   if (missing > 0) parts.push(`${missing} expected column(s) MISSING`);
   if (notNullable > 0) parts.push(`${notNullable} column(s) STILL NOT NULL`);
+  if (forbidden > 0) parts.push(`${forbidden} forbidden column(s) PRESENT`);
   console.error(`\nverify-schema: ${parts.join("; ")}.`);
-  console.error("ensureSchema() has not fully run against this database since the migration landed.");
+  if (missing > 0 || notNullable > 0) {
+    console.error("ensureSchema() has not fully run against this database since the migration landed.");
+  }
+  if (forbidden > 0) {
+    console.error("A column that must not exist is present — this is a security regression, not a missing migration.");
+  }
   process.exit(1);
 }
-console.log("\nverify-schema: all expected columns present and correctly nullable.");
+console.log("\nverify-schema: all expected columns present, correctly nullable, no forbidden columns.");
