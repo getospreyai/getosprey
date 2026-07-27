@@ -650,14 +650,91 @@ the reviewed copy — and that commit is the one that unblocks the flag.
 
 ---
 
-## 11. Open decisions for Dylan
+## 11. Decisions
 
-1. **§7 farm markets after claim** — enforce, auto-disconnect, or budget?
-   Recommendation: auto-disconnect with confirmation. *Blocks commit 11.*
-2. **§2 Flow B** — confirm existing-account linking is deferred to Phase 2b.
-   Recommendation: defer. *Blocks nothing; needs recording in the parent plan.*
-3. **§5.5 report/share-link policy after disconnect** — do the agent's reports
-   survive? Recommendation: yes, reports stay with the agent; feed and buy box
-   become inaccessible. *Blocks the legal copy, which blocks the flag.*
-4. **§3.2 consent metadata** — IP/user-agent on consent rows, yes or no?
-   Recommendation: no, unless legal review asks. *Blocks commit 3.*
+### Settled (Dylan, 2026-07-27) — all built
+
+1. **§7 farm markets after claim → auto-disconnect.** A claimed client who
+   moves their buy box outside their agent's farm is disconnected from that
+   agent rather than being refused the edit. Enforced at the mutation points
+   (`PATCH /api/profile`, `POST /api/onboarding/complete`), not only where
+   `withinFarm` already appeared. Observable on both sides: the client gets a
+   persistent banner in Settings from the write that caused it, and the agent
+   gets a "recently disconnected" section on `/clients` with the reason drawn
+   from the consent ledger. → `src/lib/farm-enforcement.ts`,
+   `tests/farm-enforcement.test.ts`.
+2. **§5.4 email collision → generic refusal.** No enumeration signal, no
+   silent linking, routed to support. Because `claimInvite()` is a single
+   statement, the rollback leaves the invite outstanding, so the claimer can
+   retry with a different address instead of holding a spent link.
+3. **§2 Flow B deferred** to a Phase 2b with its own consent design.
+4. **§3.1 token storage → sha256**, and **32 random bytes** rather than
+   `crypto.randomUUID()`.
+5. **§3.2 consent metadata → no IP/user-agent** unless legal review asks.
+6. **§4.4 `POLICY_VERSION = "PROVISIONAL"`** with the claim path refusing to
+   run against it and a test that fails only when the flag is on.
+
+### Still open
+
+**Do the agent's reports and share links survive a disconnect?** (§5.5)
+
+Unanswered, and deliberately not blocking the build. It gates the legal copy,
+and therefore the flag — not any code that has been written.
+
+Where the decision lands, concretely:
+
+| If the answer is… | What changes |
+|---|---|
+| Reports stay with the agent (recommended) | Nothing in code. `property_reports` is keyed `(user_id, listing_id)` and the agent's own rows are already theirs; `disconnectAgent()` does not touch them. |
+| Reports must be revoked on disconnect | One statement added to the `disconnectAgent()` transaction in `src/osprey/pg-store.ts`, alongside the existing invite revocation. |
+| Share links must be revoked on disconnect | One statement in the same transaction: `UPDATE share_links SET revoked = true WHERE user_id = <client>`. |
+
+All three are a single transaction in one method, which is why this was worth
+structuring for rather than waiting on. Whatever is decided must also be
+written into the Privacy Policy's agent section — §3b requires "a defined
+policy for reports and share links the agent already created," and a policy
+that exists only in code is not a defined policy.
+
+---
+
+## 12. Build status (2026-07-27)
+
+Branch `phase2-invites`, 12 commits on top of `d23bfe2`. Not merged, not
+deployed, flag not flipped.
+
+- 199 tests passing (was 114 on `master`); `tsc --noEmit` and `eslint` clean.
+- `npm run build` could not be verified in the sandbox: `next build` fails
+  fetching Geist, Geist Mono, and Instrument Serif from Google Fonts, which
+  the environment cannot reach. Those imports are in `src/app/layout.tsx`,
+  untouched by this branch, and the build reports no other errors. **Needs one
+  local `npm run build` to confirm.**
+- `grep systemSubject` returns the same results as before this branch. Phase 2
+  adds no authorization bypass.
+- New unauthenticated surface, in full: `GET /claim/[token]` (read) and
+  `POST /api/claim` (write). Nothing else.
+
+### Before this can ship
+
+1. Reviewed Privacy Policy + ToS with an agent-relationship section, re-dated.
+2. `POLICY_VERSION` and `EFFECTIVE_DATE` set to that date in
+   `src/lib/legal.ts`; `AGENT_ACCESS_DISCLOSURE` reworded to match it section
+   for section.
+3. Decision on reports/share links above, reflected in both the policy and (if
+   it is not the recommended answer) `disconnectAgent()`.
+4. Migration rehearsed on a Neon branch per §9b — this wave is pure
+   `CREATE TABLE`, so lower risk than Phase 0's `users` ALTERs, but rehearse
+   anyway. `node scripts/verify-schema.mjs --branch` covers the new tables and
+   asserts `client_invites.token` does **not** exist.
+5. `npm run build` locally.
+6. Only then `OSPREY_AGENT_ACCOUNTS=true`.
+
+### Known gaps, deliberately left
+
+- **No rate limiting on `POST /api/claim`.** Acceptable against a 256-bit
+  token; the mitigation for the bcrypt cost is ordering (invite lookup first).
+  Worth revisiting if any other unauthenticated write is ever added.
+- **No agent-side editing of a claimed client's buy box**, which is correct —
+  `canEdit` goes false — but there is also still no edit path for a *managed*
+  client's buy box after creation. That predates Phase 2.
+- **Flow B** (existing account linking) is unbuilt; the claim route refuses
+  that case generically rather than handling it.
