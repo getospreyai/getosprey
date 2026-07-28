@@ -19,15 +19,13 @@ import { useRouter } from "next/navigation";
 const fieldClass =
   "w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-white placeholder-white/40 outline-none backdrop-blur-sm transition focus:border-violet-400/60 focus:bg-white/[0.09]";
 
-export default function ClaimForm({
-  token,
-  suggestedEmail,
-}: {
-  token: string;
-  suggestedEmail: string;
-}) {
+export default function ClaimForm({ token }: { token: string }) {
   const router = useRouter();
-  const [email, setEmail] = useState(suggestedEmail);
+  // Starts empty. It used to be pre-filled with the address the agent supplied
+  // — that address no longer exists, and Osprey has no idea who is on this
+  // page. Whatever they type is the first thing we learn about them.
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -41,7 +39,7 @@ export default function ClaimForm({
     const res = await fetch("/api/claim", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, email, password, consent }),
+      body: JSON.stringify({ token, email, name, password, consent }),
     }).catch(() => null);
 
     if (!res) {
@@ -66,6 +64,24 @@ export default function ClaimForm({
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+      <div>
+        <label htmlFor="claim-name" className="block text-sm text-white/70">
+          Your name
+        </label>
+        <input
+          id="claim-name"
+          required
+          autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className={`mt-1.5 ${fieldClass}`}
+        />
+        <p className="mt-1.5 text-xs text-white/35">
+          Your agent set this account up without one — we don&apos;t collect anything
+          about you until you do.
+        </p>
+      </div>
+
       <div>
         <label htmlFor="claim-email" className="block text-sm text-white/70">
           Your email

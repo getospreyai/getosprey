@@ -175,7 +175,7 @@ console.log("  2. agent                    active   / agent      (farm: NV)");
 
 /** A client on the agent's roster. Managed clients carry a synthetic address on
  *  the clients.osprey.invalid domain, matching PgStore.createManagedClient. */
-async function makeClient({ label, status, realEmail, archived = false }) {
+async function makeClient({ label, status, archived = false }) {
   const id = randomUUID();
   const email =
     status === "active" ? `${label}@${DOMAIN}` : `managed-${id}@clients.osprey.invalid`;
@@ -186,9 +186,8 @@ async function makeClient({ label, status, realEmail, archived = false }) {
   `;
   await makeProfile(id, `TEST ${label} client`);
   await sql`
-    INSERT INTO agent_clients (agent_user_id, client_user_id, label, client_email, archived_at)
-    VALUES (${agentId}, ${id}, ${label}, ${realEmail},
-            ${archived ? new Date().toISOString() : null})
+    INSERT INTO agent_clients (agent_user_id, client_user_id, label, archived_at)
+    VALUES (${agentId}, ${id}, ${label}, ${archived ? new Date().toISOString() : null})
   `;
   created.push({
     email,
@@ -201,27 +200,25 @@ async function makeClient({ label, status, realEmail, archived = false }) {
 }
 
 // 3. Managed — the Phase 1 state. Agent owns the buy box; cannot sign in.
-await makeClient({ label: "managed", status: "managed", realEmail: `managed.real@${DOMAIN}` });
+await makeClient({ label: "managed", status: "managed" });
 console.log("  3. managed client           managed  / no password, agent can edit");
 
 // 4. Invited — an outstanding invite. The claim URL is printed below.
 const invitedId = await makeClient({
   label: "invited",
   status: "invited",
-  realEmail: `invited.real@${DOMAIN}`,
 });
 const token = "osp_inv_" + randomBytes(32).toString("base64url");
 await sql`
-  INSERT INTO client_invites (token_hash, agent_user_id, client_user_id, email, expires_at)
+  INSERT INTO client_invites (token_hash, agent_user_id, client_user_id, expires_at)
   VALUES (${createHash("sha256").update(token, "utf8").digest("hex")},
-          ${agentId}, ${invitedId}, ${`invited.real@${DOMAIN}`},
-          ${new Date(Date.now() + 7 * 864e5).toISOString()})
+          ${agentId}, ${invitedId}, ${new Date(Date.now() + 7 * 864e5).toISOString()})
 `;
 console.log("  4. invited client           invited  / live invite token");
 
 // 5. Claimed — the client owns their data now, so the agent drops to read-only
 //    (resolveScope returns canEdit: false once clientStatus is 'active').
-await makeClient({ label: "claimed", status: "active", realEmail: `claimed.real@${DOMAIN}` });
+await makeClient({ label: "claimed", status: "active" });
 console.log("  5. claimed client           active   / agent is READ-ONLY");
 
 // 6. Disconnected — roster row archived. resolveScope refuses the agent
@@ -230,7 +227,6 @@ console.log("  5. claimed client           active   / agent is READ-ONLY");
 const goneId = await makeClient({
   label: "disconnected",
   status: "active",
-  realEmail: `disconnected.real@${DOMAIN}`,
   archived: true,
 });
 await sql`

@@ -225,13 +225,19 @@ export async function ensureSchema(): Promise<void> {
       )
     `,
 
-    // The client's real contact address, kept OFF users.email deliberately.
-    // A managed client's users.email is a synthetic placeholder, so adding a
-    // client can never collide with an existing account — which would both
-    // fail confusingly and turn client creation into an email-enumeration
-    // oracle. Phase 2's invite reads this; claiming moves it onto users.email
-    // under the consent flow, where a collision is handled explicitly.
-    sql`ALTER TABLE agent_clients ADD COLUMN IF NOT EXISTS client_email TEXT`,
+    // Referral model (2026-07-27). agent_clients.client_email used to hold a
+    // real person's contact address, supplied by their agent, before that
+    // person had any relationship with Osprey — which, next to a users.name and
+    // a buy box describing their finances, was a file on a non-consenting third
+    // party (docs/PRIVACY-TOS-AGENT-DRAFT.md §A5/§A7, and the §D1 question those
+    // raised). Osprey now stores nothing about anyone until they create their
+    // own account: an agent-created client is an anonymous saved search.
+    //
+    // Not yet created in production when this landed, so a no-op there. The
+    // DROP is for dev databases and Neon branches on the earlier schema, and
+    // scripts/verify-schema.mjs forbids the column so it cannot come back
+    // unnoticed.
+    sql`ALTER TABLE agent_clients DROP COLUMN IF EXISTS client_email`,
 
     // Constrain the enum-ish columns. canActAsViewer() allowlists 'active', so a
     // typo would lock an account out rather than open it up — but a bad value is
@@ -271,19 +277,27 @@ export async function ensureSchema(): Promise<void> {
     // the slow-hash argument that applies to passwords does not apply. Do not
     // "upgrade" this to bcrypt — its 72-byte truncation and cost factor buy
     // nothing against a random 256-bit secret.
+    //
+    // No `email` column. The invite is a REFERRAL link, not a message addressed
+    // to someone: Osprey does not know, store, or ever learn who the agent
+    // sends it to until that person claims it with an address of their own
+    // choosing.
     sql`
       CREATE TABLE IF NOT EXISTS client_invites (
         id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         token_hash     TEXT NOT NULL UNIQUE,
         agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         client_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        email          TEXT NOT NULL,
         expires_at     TIMESTAMPTZ NOT NULL,
         accepted_at    TIMESTAMPTZ,
         revoked_at     TIMESTAMPTZ,
         created_at     TIMESTAMPTZ DEFAULT now()
       )
     `,
+
+    // For databases on the earlier schema; no-op on one that created the table
+    // above. See the referral-model note on agent_clients.client_email.
+    sql`ALTER TABLE client_invites DROP COLUMN IF EXISTS email`,
 
     sql`
       CREATE INDEX IF NOT EXISTS client_invites_agent_idx

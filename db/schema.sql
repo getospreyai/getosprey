@@ -183,11 +183,29 @@ CREATE TABLE IF NOT EXISTS agent_settings (
   updated_at    TIMESTAMPTZ DEFAULT now()
 );
 
--- The client's real contact address, kept OFF users.email deliberately. A
--- managed client's users.email is a synthetic placeholder, so adding a client
--- can never collide with an existing account — which would both fail
--- confusingly and turn client creation into an email-enumeration oracle.
-ALTER TABLE agent_clients ADD COLUMN IF NOT EXISTS client_email TEXT;
+-- ---------------------------------------------------------------------------
+-- Referral model (2026-07-27): Osprey stores NOTHING about a person until they
+-- create their own account.
+--
+-- agent_clients.client_email held a real person's contact address, supplied by
+-- their agent, before that person had any relationship with Osprey. Combined
+-- with a users.name and a buy box describing their financial position, that was
+-- a file on a non-consenting third party — findings A5/A7 in
+-- docs/PRIVACY-TOS-AGENT-DRAFT.md, and the open question its §D1 could not
+-- answer ("must a managed client who never claims be told we hold their data?").
+--
+-- The answer is now: there is no such data to tell them about. An agent-created
+-- client is an ANONYMOUS SAVED SEARCH — a buy box plus a label the agent chose —
+-- and it becomes a person only when someone claims it with their own email and
+-- their own recorded consent.
+--
+-- These columns had not yet been created in production when this landed
+-- (client_invites did not exist there at all), so this is a no-op there rather
+-- than a data loss. The DROPs exist for dev databases and Neon branches that
+-- ran the earlier schema. scripts/verify-schema.mjs FORBIDS both columns, so a
+-- future change that reintroduces one fails the migration gate.
+-- (client_invites.email is dropped further down, after that table is created.)
+ALTER TABLE agent_clients DROP COLUMN IF EXISTS client_email;
 
 -- Constrain the enum-ish columns. ADD CONSTRAINT has no IF NOT EXISTS.
 DO $$ BEGIN
@@ -214,17 +232,23 @@ END $$;
 -- otherwise be account takeover for every outstanding invite. Plain sha256 is
 -- correct here because the token is 256 bits of CSPRNG output — there is no
 -- dictionary to attack, so the slow-hash argument for passwords does not apply.
+-- No `email` column. The invite is a REFERRAL link, not a message addressed to
+-- someone: Osprey does not know, store, or ever learn who the agent sends it to
+-- until that person claims it with an address of their own choosing.
 CREATE TABLE IF NOT EXISTS client_invites (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   token_hash     TEXT NOT NULL UNIQUE,
   agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   client_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  email          TEXT NOT NULL,
   expires_at     TIMESTAMPTZ NOT NULL,
   accepted_at    TIMESTAMPTZ,
   revoked_at     TIMESTAMPTZ,
   created_at     TIMESTAMPTZ DEFAULT now()
 );
+
+-- Dev databases and Neon branches that ran the earlier schema. No-op on a
+-- database that created the table above. See the referral-model note further up.
+ALTER TABLE client_invites DROP COLUMN IF EXISTS email;
 
 CREATE INDEX IF NOT EXISTS client_invites_agent_idx  ON client_invites (agent_user_id);
 CREATE INDEX IF NOT EXISTS client_invites_client_idx ON client_invites (client_user_id);

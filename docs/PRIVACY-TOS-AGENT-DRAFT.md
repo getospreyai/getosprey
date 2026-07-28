@@ -154,7 +154,7 @@ earlier worry that this altered existing users' links was wrong; the fallback
 covers them exactly as before. Disclosed in §B4 as well, since the client should
 know their agent is named rather than them.
 
-### A5. We collect personal data about people who are not users and have not consented
+### A5. We collect personal data about people who are not users and have not consented — **REMOVED, not disclosed**
 
 `agent_clients.client_email` (`db/schema.sql:190`) and `client_invites.email`
 hold a real person's email address, supplied by their agent, before that person
@@ -176,6 +176,27 @@ There is also a related product gap worth naming: **a managed client who never
 claims is never told Osprey holds their data.** No notice is ever sent — by
 design, since Osprey contacts nobody (§9). Whether that is acceptable is a
 question for counsel, not for me.
+
+> **RESOLVED 2026-07-27 by removing the data, not by disclosing it** (Dylan's
+> call — "mitigate the legal ambiguity"). The referral model deletes
+> `agent_clients.client_email` and `client_invites.email` outright, and an
+> agent-created client no longer carries a real name: `users.name` holds the
+> agent's own free-text label for the search until a claimer supplies their own
+> name.
+>
+> So there is no longer any personal data about a non-consenting person to
+> disclose, notify about, or retain. **The question this finding raised — "must
+> a managed client who never claims be told we hold their data?" — has no
+> subject.** If they never claim, Osprey never held anything about them.
+>
+> The label is agent-authored free text and an agent may still type a name into
+> it. That is materially different from a structured identity field we asked
+> for: it is uncontactable, it is the agent's own reference, and both the form
+> and ToS §16 ask them not to. Warned, not blocked — the deliberate choice.
+>
+> Enforced, not just intended: `scripts/verify-schema.mjs` FORBIDS both columns,
+> so a future "just store the email so the agent can see who they invited"
+> change fails the migration gate rather than quietly reappearing.
 
 ### A6. Deleting a user destroys the consent record — **FIXED**
 
@@ -199,12 +220,21 @@ The retention justification is drafted in §B5. **This is the one §A fix that a
 reviewer might want reversed** — it trades a small retention of anonymized data
 against the ability to answer "did they consent?" after deletion. Flagged in §D3.
 
-### A7. Invite rows are retained indefinitely
+### A7. Invite rows are retained indefinitely — **DEFUSED**
 
 `client_invites` rows are never deleted — accepted, revoked, and expired rows all
 persist, each holding an email address. `PHASE-2-INVITES-PLAN.md` §4.3
 deliberately declined to add a cleanup job. Retention copy has to cover this, or
 we need the job.
+
+> **RESOLVED 2026-07-27.** The rows still persist, but the `email` column is
+> gone. What remains is a token hash, two user ids, and timestamps — a record
+> that a referral link existed, containing no contact details for anyone. The
+> indefinite retention that mattered was of the email; the rest is the audit
+> trail for how an account came to exist, which is worth keeping.
+>
+> A cleanup job is therefore still unnecessary, and now for a better reason than
+> "we decided not to."
 
 ### A8. The client's chosen sign-in email is not visible to the agent
 
@@ -382,22 +412,29 @@ definitely one for the reviewer.*
 These are the questions engineering cannot answer. Everything else in this
 document is either settled or a claim about the code you can check.
 
-1. **Does a managed client who never claims need to be notified** that we hold
-   their name, contact address, and financial criteria? We currently never
-   contact them, by design — Osprey has no email provider and the agent delivers
-   every invitation themselves. (§A5)
-2. **Is the "agent already held this information" argument sufficient** for
-   collection without consent, and does it survive us *storing* and *processing*
-   it? (Plan §3b)
-3. **Consent record vs. right to erasure.** We chose to keep an anonymized
+Three of the original five were **removed rather than answered** by the referral
+model on 2026-07-27 — which was the point of building it. Struck through below
+so the reasoning survives:
+
+1. ~~**Does a managed client who never claims need to be notified** that we hold
+   their name, contact address, and financial criteria?~~ **Moot.** We hold
+   nothing about them. (§A5)
+2. ~~**Is the "agent already held this information" argument sufficient** for
+   collection without consent?~~ **Moot** — we no longer rely on that argument,
+   because we no longer collect the information. The argument was always the
+   weakest part of the design; deleting its subject is better than winning it.
+3. ~~**Indefinite retention of invitation records.**~~ **Moot** — invite rows no
+   longer contain an email. (§A7)
+
+Still genuinely open:
+
+4. **Consent record vs. right to erasure.** We chose to keep an anonymized
    record after account deletion (§A6, implemented). Confirm or reverse — the
    reversal is a one-line schema change.
-4. **Does anything here change the NRS 603A.340 operator notice analysis**, given
-   the new category of data about non-users?
-5. **Indefinite retention of invitation records** (§A7). `client_invites` rows,
-   each holding an email address the agent supplied, are never deleted. §B5's
-   first sentence is drafted to cover this. If a finite retention period is
-   required instead, we need a cleanup job that does not exist today.
+5. **Does anything here change the NRS 603A.340 operator notice analysis?** The
+   answer should now be "less than before" — the category of data about
+   non-users is gone — but the notice still needs to describe what an agent can
+   see about a client who *has* claimed.
 
 Answered since the first draft, recorded here so they are not re-opened:
 **decision #3** (business call, made 2026-07-27 — reports stay, share links are

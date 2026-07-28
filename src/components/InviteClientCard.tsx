@@ -18,13 +18,13 @@ import { useRouter } from "next/navigation";
 
 export default function InviteClientCard({
   clientId,
-  clientName,
-  clientEmail,
+  clientLabel,
   status,
 }: {
   clientId: string;
-  clientName: string;
-  clientEmail: string | null;
+  /** The agent's own reference for this saved search. There is no client name
+   *  or address to show — see the referral-model note in PgStore. */
+  clientLabel: string;
   status: string;
 }) {
   const router = useRouter();
@@ -96,8 +96,8 @@ export default function InviteClientCard({
       <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md">
         <h2 className="text-base font-medium">Account claimed</h2>
         <p className="mt-1.5 text-sm text-white/55">
-          {clientName} controls this account. You have read access to their buy box and
-          feed, and they can disconnect at any time.
+          Someone claimed &ldquo;{clientLabel}&rdquo; and controls this account now. You
+          have read access to their buy box and feed, and they can disconnect at any time.
         </p>
       </div>
     );
@@ -105,11 +105,15 @@ export default function InviteClientCard({
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-md">
-      <h2 className="text-base font-medium">Invite {clientName}</h2>
+      <h2 className="text-base font-medium">Hand this over</h2>
       <p className="mt-1.5 text-sm text-white/55">
-        {clientEmail
-          ? `Create a link and send it to ${clientEmail} yourself — by text, email, or in person. Osprey never contacts your clients directly.`
-          : "Add this client's email address before inviting them — the invite is addressed to it."}
+        Create a referral link and send it yourself — by text, email, or in person.
+        Osprey never contacts your clients, and we don&apos;t ask who you sent it to:
+        whoever uses the link enters their own email and sets their own password.
+      </p>
+      <p className="mt-2 text-xs text-white/40">
+        Until then we store nothing about them — just this buy box and the label you gave
+        it.
       </p>
 
       {status === "invited" && !link && (
@@ -154,7 +158,7 @@ export default function InviteClientCard({
         <button
           type="button"
           onClick={mint}
-          disabled={busy || !clientEmail}
+          disabled={busy}
           className="glow-cta rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-medium text-white shadow-[0_10px_30px_rgba(79,70,229,0.45)] transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? "Working…" : status === "invited" ? "Create a new link" : "Create invite link"}

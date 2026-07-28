@@ -87,8 +87,21 @@ const EXPECTED_DELETE_RULE = [
  *  database stores sha256(token) and never the token itself
  *  (docs/PHASE-2-INVITES-PLAN.md §3.1). A well-meaning "add the token back so
  *  agents can re-copy the link" change would silently reintroduce that, and
- *  nothing else in the codebase would fail. This is the check that would. */
-const FORBIDDEN = [["client_invites", "token"]];
+ *  nothing else in the codebase would fail. This is the check that would.
+ *
+ *  client_invites.email and agent_clients.client_email would mean Osprey is
+ *  once again storing a real person's contact address, supplied by their agent,
+ *  before that person has any relationship with us. That was the substance of
+ *  findings A5 and A7 and the reason §D1 had no good answer; the referral model
+ *  (2026-07-27) removed it. Both are easy to reintroduce — "just store the email
+ *  so the agent can see who they invited" is a reasonable-sounding feature
+ *  request — and nothing else in the codebase would fail if someone did. This is
+ *  the check that would. */
+const FORBIDDEN = [
+  ["client_invites", "token"],
+  ["client_invites", "email"],
+  ["agent_clients", "client_email"],
+];
 
 /** Tables whose row counts are worth seeing before/after a migration. */
 const COUNT_TABLES = [
@@ -96,6 +109,7 @@ const COUNT_TABLES = [
   "investor_profiles",
   "verdicts",
   "scan_runs",
+  "agent_clients",
   "client_invites",
   "client_consents",
   "admin_audit",

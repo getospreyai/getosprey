@@ -13,38 +13,32 @@
 
 import type { Scope } from "@/lib/scope";
 
-export type InviteBlockCode =
-  | "not_a_client"
-  | "read_only"
-  | "already_claimed"
-  | "no_contact_email";
+export type InviteBlockCode = "not_a_client" | "read_only" | "already_claimed";
 
 export type InviteCheck =
-  /** Carries the validated address so the caller cannot reach the mint with a
-   *  null it has not checked — the type is the proof, not a `!` at the call
-   *  site. Same idea as the branded SubjectId in src/lib/scope.ts. */
-  | { ok: true; email: string }
+  | { ok: true }
   | { ok: false; code: InviteBlockCode; reason: string };
 
 /** The client-row fields the decision needs. */
 export interface InviteCandidate {
   /** 'managed' | 'invited' | 'active' */
   status: string;
-  /** agent_clients.client_email — null until the agent supplies one. */
-  clientEmail: string | null;
 }
 
 /**
  * Whether this agent may mint an invite for this client.
  *
- * The caller maps every `ok: false` except `no_contact_email` onto an
- * identical 404. The codes exist for the SERVER's logs and for tests, never
- * for the response body — a caller that can tell "already claimed" apart from
- * "not your client" can enumerate both (threat T4).
+ * The caller maps every `ok: false` onto an identical 404. The codes exist for
+ * the SERVER's logs and for tests, never for the response body — a caller that
+ * can tell "already claimed" apart from "not your client" can enumerate both
+ * (threat T4).
  *
- * `no_contact_email` is the one case that gets a real message, because it is
- * the agent's own missing data about their own client. It reveals nothing they
- * did not already have.
+ * REFERRAL MODEL (2026-07-27): there used to be a fourth code,
+ * `no_contact_email`, refusing to mint until the agent had supplied the
+ * client's address, because the invite was "addressed to" that person. It is
+ * gone along with the column. An invite is now a referral link that Osprey
+ * hands to the agent with no idea who it is for — which is the entire point:
+ * we cannot store data about the recipient because we never learn who they are.
  */
 export function canMintInvite(scope: Scope, client: InviteCandidate): InviteCheck {
   // Inviting yourself is not a thing. Beyond being meaningless, a self scope
@@ -88,16 +82,5 @@ export function canMintInvite(scope: Scope, client: InviteCandidate): InviteChec
     };
   }
 
-  // An invite is addressed to a specific person. With no contact address there
-  // is nothing to bind the token to and nothing to show the claimer.
-  if (!client.clientEmail) {
-    return {
-      ok: false,
-      code: "no_contact_email",
-      reason:
-        "Add this client's email address before inviting them — the invite is addressed to it.",
-    };
-  }
-
-  return { ok: true, email: client.clientEmail };
+  return { ok: true };
 }

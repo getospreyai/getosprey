@@ -25,11 +25,21 @@ import type { InvestorProfile } from "@/osprey/agent/model";
 
 const NO_STORE = { headers: { "Cache-Control": "no-store, max-age=0" } };
 
+/**
+ * REFERRAL MODEL (2026-07-27): no `name`, no `email`.
+ *
+ * An agent-created client is an anonymous saved search. `label` is the agent's
+ * own reference for it and is the only human-meaningful string stored — Osprey
+ * learns nothing about the person until they claim the account themselves and
+ * supply their own address under a recorded consent.
+ *
+ * These fields are not merely optional, they are ABSENT: an extra key in the
+ * body is ignored by zod rather than stored, so a stale client sending
+ * `{ name, email }` degrades to storing neither instead of quietly persisting
+ * them.
+ */
 const CreateClientSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  /** Contact address only — never becomes users.email while managed. */
-  email: z.string().trim().email().max(200).optional().or(z.literal("")),
-  label: z.string().trim().max(120).optional(),
+  label: z.string().trim().min(1).max(120),
   settings: PatchProfileSchema,
 });
 
@@ -96,7 +106,7 @@ export async function POST(req: NextRequest) {
 
   const clientUserId = crypto.randomUUID();
   const profile = mergeProfileSettings(
-    baseProfile(clientUserId, parsed.data.name),
+    baseProfile(clientUserId, parsed.data.label),
     parsed.data.settings,
   );
 
@@ -118,10 +128,8 @@ export async function POST(req: NextRequest) {
     await store.createManagedClient({
       agentUserId,
       clientUserId,
-      name: parsed.data.name,
       syntheticEmail: syntheticEmail(clientUserId),
-      clientEmail: parsed.data.email ? parsed.data.email.toLowerCase() : null,
-      label: parsed.data.label ?? null,
+      label: parsed.data.label,
       profile,
     });
   } catch (err) {

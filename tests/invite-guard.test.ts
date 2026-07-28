@@ -43,7 +43,7 @@ const selfScope: Scope = {
   canEdit: true,
 };
 
-const managed: InviteCandidate = { status: "managed", clientEmail: "c@example.com" };
+const managed: InviteCandidate = { status: "managed" };
 
 function deps(over: Partial<ScopeDeps> = {}): ScopeDeps {
   return {
@@ -96,19 +96,18 @@ describe("the authorization half — no scope, no invite", () => {
 });
 
 describe("canMintInvite — client state", () => {
-  it("allows a managed client, and hands back the validated address", () => {
-    // The address comes out of the check rather than being re-read from the
-    // row, so the mint cannot be reached with an unvalidated null.
-    expect(canMintInvite(agentScope, managed)).toEqual({
-      ok: true,
-      email: "c@example.com",
-    });
+  it("allows a managed client, and carries nothing back but the verdict", () => {
+    // The ok branch used to hand back a validated contact address so the mint
+    // could not be reached with an unchecked null. There is no address any
+    // more, and the shape assertion is the point: an `ok` result carrying a
+    // recipient would mean Osprey had learned who the invite is for.
+    expect(canMintInvite(agentScope, managed)).toEqual({ ok: true });
   });
 
   it("allows re-inviting an already-invited client", () => {
     // Re-minting is how an agent replaces a link they lost or mis-sent. The
     // store revokes the previous one, so this stays single-outstanding.
-    const invited: InviteCandidate = { status: "invited", clientEmail: "c@example.com" };
+    const invited: InviteCandidate = { status: "invited" };
     expect(canMintInvite(agentScope, invited).ok).toBe(true);
   });
 
@@ -122,7 +121,7 @@ describe("canMintInvite — client state", () => {
     // resolveScope says yes to this — the roster row is live. If this check
     // were missing, an agent could mint a link that sets a new password on an
     // account its owner controls.
-    const claimed: InviteCandidate = { status: "active", clientEmail: "c@example.com" };
+    const claimed: InviteCandidate = { status: "active" };
     const check = canMintInvite({ ...agentScope, canEdit: false }, claimed);
     expect(check.ok).toBe(false);
     expect(check.ok === false && check.code).toBe("already_claimed");
@@ -131,7 +130,7 @@ describe("canMintInvite — client state", () => {
   it("refuses a claimed client even if canEdit wrongly says true", () => {
     // Defense in depth: canEdit is DERIVED from status, so these can only
     // disagree through a bug. If they do, refuse.
-    const claimed: InviteCandidate = { status: "active", clientEmail: "c@example.com" };
+    const claimed: InviteCandidate = { status: "active" };
     expect(canMintInvite({ ...agentScope, canEdit: true }, claimed).ok).toBe(false);
   });
 
@@ -145,21 +144,17 @@ describe("canMintInvite — client state", () => {
     // Allowlist, matching canActAsViewer's reasoning: a typo or a status added
     // later must fail CLOSED, not sail past a denylist.
     for (const status of ["suspended", "manged", "", "ACTIVE", "deleted"]) {
-      const check = canMintInvite(agentScope, { status, clientEmail: "c@example.com" });
+      const check = canMintInvite(agentScope, { status });
       expect(check.ok, `status ${JSON.stringify(status)} must not be invitable`).toBe(false);
     }
   });
 
-  it("refuses when there is no contact address", () => {
-    const check = canMintInvite(agentScope, { status: "managed", clientEmail: null });
-    expect(check.ok).toBe(false);
-    expect(check.ok === false && check.code).toBe("no_contact_email");
-  });
-
-  it("treats an empty-string address as missing", () => {
-    const check = canMintInvite(agentScope, { status: "managed", clientEmail: "" });
-    expect(check.ok).toBe(false);
-    expect(check.ok === false && check.code).toBe("no_contact_email");
+  // The two tests that used to live here required a stored contact address
+  // before an invite could be minted. Both are gone with the column: an invite
+  // is a REFERRAL link now, and Osprey never learns who it is handed to. See
+  // the referral-model note in src/lib/invite-guard.ts.
+  it("mints for a managed client with no contact details at all", () => {
+    expect(canMintInvite(agentScope, { status: "managed" }).ok).toBe(true);
   });
 });
 
@@ -169,24 +164,26 @@ describe("what the refusal is allowed to say", () => {
     // no_contact_email onto an identical 404, but a reason string that leaked
     // an id would be a problem the moment someone decided to surface it.
     const cases: InviteCandidate[] = [
-      { status: "active", clientEmail: "c@example.com" },
-      { status: "suspended", clientEmail: "c@example.com" },
-      { status: "managed", clientEmail: null },
+      { status: "active" },
+      { status: "suspended" },
+      { status: "" },
     ];
     for (const c of cases) {
       const check = canMintInvite(agentScope, c);
       if (check.ok) continue;
       expect(check.reason).not.toContain(CLIENT);
       expect(check.reason).not.toContain(AGENT);
-      expect(check.reason).not.toContain("c@example.com");
     }
   });
 
-  it("only no_contact_email is safe to show the caller", () => {
-    // Guards the route's mapping: if a code is added later, this test is where
-    // someone has to decide which side of the 404 line it falls on.
-    const shown: string[] = ["no_contact_email"];
-    const all: string[] = ["not_a_client", "read_only", "already_claimed", "no_contact_email"];
-    expect(all.filter((c) => shown.includes(c))).toEqual(["no_contact_email"]);
+  it("every code maps onto the identical 404", () => {
+    // There is no longer any code the route is allowed to surface. When
+    // no_contact_email existed it was the single exception, because it was the
+    // agent's own missing data about their own client. Nothing like that
+    // remains, so if a code is added later this test is where someone has to
+    // argue it onto the visible side of the line.
+    const all: string[] = ["not_a_client", "read_only", "already_claimed"];
+    const shown: string[] = [];
+    expect(all.filter((c) => shown.includes(c))).toEqual([]);
   });
 });

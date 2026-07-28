@@ -23,8 +23,7 @@ const fieldClass =
  */
 export default function NewClientForm({ farm }: { farm: WatchTarget[] }) {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [label, setLabel] = useState("");
   const [marketIdx, setMarketIdx] = useState(0);
   const [types, setTypes] = useState<PropertyType[]>(["single_family"]);
   const [bar, setBar] = useState("250");
@@ -47,8 +46,7 @@ export default function NewClientForm({ farm }: { farm: WatchTarget[] }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name,
-        email,
+        label,
         settings: {
           buyBox: {
             states: [market.state],
@@ -105,29 +103,18 @@ export default function NewClientForm({ farm }: { farm: WatchTarget[] }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
-        <label className="mb-1.5 block text-sm text-white/70">Client name</label>
+        <label className="mb-1.5 block text-sm text-white/70">Reference</label>
         <input
           required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Jordan Reyes"
-          className={fieldClass}
-        />
-      </div>
-
-      <div>
-        <label className="mb-1.5 block text-sm text-white/70">
-          Their email <span className="text-white/40">(optional)</span>
-        </label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="jordan@example.com"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Downtown duplex buyer"
           className={fieldClass}
         />
         <p className="mt-1.5 text-xs text-white/40">
-          Stored for when you invite them to claim the account. No email is sent now.
+          Your own label for this search, so you can tell your clients apart. Please
+          don&apos;t put personal details here — Osprey stores nothing about a person
+          until they claim the account themselves and enter their own email.
         </p>
       </div>
 

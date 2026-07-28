@@ -103,6 +103,10 @@ export async function POST(req: NextRequest) {
   const emailRaw = typeof body?.email === "string" ? body.email.trim() : "";
   const email = emailRaw.toLowerCase();
   const password = typeof body?.password === "string" ? body.password : "";
+  // The claimer's own name. Under the referral model this is the FIRST personal
+  // detail Osprey has about them — the agent supplied none — and it arrives
+  // from the person themselves, after the consent below.
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
   const consent = body?.consent;
 
   // Consent must be an explicit, affirmative true. Not "truthy" — a stray
@@ -133,6 +137,12 @@ export async function POST(req: NextRequest) {
       { status: 400, ...NO_STORE },
     );
   }
+  if (!name || name.length > 120) {
+    return NextResponse.json(
+      { error: "Enter your name." },
+      { status: 400, ...NO_STORE },
+    );
+  }
 
   const store = new PgStore();
   const tokenHash = hashInviteToken(token);
@@ -152,6 +162,7 @@ export async function POST(req: NextRequest) {
     const claimed = await store.claimInvite({
       tokenHash,
       email,
+      name,
       passwordHash,
       policyVersion: POLICY_VERSION,
       disclosure: AGENT_ACCESS_DISCLOSURE,

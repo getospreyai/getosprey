@@ -41,10 +41,10 @@ export interface ReportRow<T = unknown> {
 /** One active client on an agent's roster, joined with their profile. */
 export interface AgentClientRow {
   clientUserId: string;
+  /** Agent-authored free text. There is deliberately no contact address and no
+   *  real name on this row — see the referral-model note on
+   *  createManagedClient(). `name` below is this same label. */
   label: string | null;
-  /** The client's real contact address; users.email is a synthetic placeholder
-   *  for managed clients. Null until the agent supplies one. */
-  clientEmail: string | null;
   alertsLive: boolean;
   createdAt: string;
   name: string;
@@ -457,23 +457,33 @@ export class PgStore implements Store {
    * working unchanged), its investor profile, and the roster row — atomically,
    * so a failure can never leave an orphan user with no agent.
    *
-   * `email` is a SYNTHETIC placeholder. The client's real address lives in
-   * agent_clients.client_email; see the schema comment for why.
+   * REFERRAL MODEL (2026-07-27): this creates an anonymous saved search, not a
+   * record of a person. There is no real name and no contact address, because
+   * Osprey stores nothing about anyone until they create their own account.
+   *
+   * `label` is agent-authored free text ("Downtown duplex buyer") and is the
+   * ONLY human-meaningful string here. It is written to `users.name` as well,
+   * because that column is NOT NULL and the roster and admin list both read it —
+   * so the label is what an operator sees, and there is deliberately nothing
+   * else to see. The UI asks agents not to put personal details in it.
+   *
+   * `email` is a SYNTHETIC placeholder on the clients.osprey.invalid domain.
+   * Keeping it off any real address means creating a client can never collide
+   * with an existing account, which would both fail confusingly and turn client
+   * creation into an email-enumeration oracle.
    */
   async createManagedClient(params: {
     agentUserId: string;
     clientUserId: string;
-    name: string;
     syntheticEmail: string;
-    clientEmail: string | null;
-    label: string | null;
+    label: string;
     profile: unknown;
   }): Promise<void> {
     const db = requireSql();
     await db.transaction([
       db`
         INSERT INTO users (id, email, password_hash, name, role, status)
-        VALUES (${params.clientUserId}, ${params.syntheticEmail}, NULL, ${params.name},
+        VALUES (${params.clientUserId}, ${params.syntheticEmail}, NULL, ${params.label},
                 'investor', 'managed')
       `,
       db`
@@ -481,9 +491,8 @@ export class PgStore implements Store {
         VALUES (${params.clientUserId}, ${JSON.stringify(params.profile)}::jsonb)
       `,
       db`
-        INSERT INTO agent_clients (agent_user_id, client_user_id, label, client_email)
-        VALUES (${params.agentUserId}, ${params.clientUserId}, ${params.label},
-                ${params.clientEmail})
+        INSERT INTO agent_clients (agent_user_id, client_user_id, label)
+        VALUES (${params.agentUserId}, ${params.clientUserId}, ${params.label})
       `,
     ]);
   }
@@ -492,7 +501,7 @@ export class PgStore implements Store {
   async listAgentClients(agentUserId: string): Promise<AgentClientRow[]> {
     const db = requireSql();
     const rows = (await db`
-      SELECT ac.client_user_id, ac.label, ac.client_email, ac.alerts_live, ac.created_at,
+      SELECT ac.client_user_id, ac.label, ac.alerts_live, ac.created_at,
              u.name, u.status, ip.profile
       FROM agent_clients ac
       JOIN users u ON u.id = ac.client_user_id
@@ -502,7 +511,6 @@ export class PgStore implements Store {
     `) as {
       client_user_id: string;
       label: string | null;
-      client_email: string | null;
       alerts_live: boolean;
       created_at: string;
       name: string;
@@ -512,7 +520,6 @@ export class PgStore implements Store {
     return rows.map((r) => ({
       clientUserId: r.client_user_id,
       label: r.label,
-      clientEmail: r.client_email,
       alertsLive: r.alerts_live,
       createdAt: r.created_at,
       name: r.name,
@@ -558,7 +565,6 @@ export class PgStore implements Store {
   async mintInvite(params: {
     agentUserId: string;
     clientUserId: string;
-    email: string;
     tokenHash: string;
     expiresAt: Date;
   }): Promise<void> {
@@ -573,10 +579,10 @@ export class PgStore implements Store {
       `,
       db`
         INSERT INTO client_invites
-          (token_hash, agent_user_id, client_user_id, email, expires_at)
+          (token_hash, agent_user_id, client_user_id, expires_at)
         VALUES
           (${params.tokenHash}, ${params.agentUserId}, ${params.clientUserId},
-           ${params.email}, ${params.expiresAt.toISOString()})
+           ${params.expiresAt.toISOString()})
       `,
       db`
         UPDATE users SET status = 'invited'
@@ -611,8 +617,10 @@ export class PgStore implements Store {
   /**
    * What the public claim page needs to render, or null.
    *
-   * Read-only and deliberately thin: it returns the two display names and
-   * nothing else about the client. The caller renders ONE identical dead-link
+   * Read-only and deliberately thin: it returns the agent's name and the
+   * agent-authored label, and nothing else. There is no contact address to
+   * return — under the referral model Osprey does not know who is on this page
+   * until they type an address into the form. The caller renders ONE identical dead-link
    * state for every failure — expired, revoked, accepted, malformed, never
    * existed — so this must not hand back anything that could distinguish them
    * (docs/AGENT-ACCOUNTS-PLAN.md §3a T4).
@@ -621,13 +629,12 @@ export class PgStore implements Store {
     agentUserId: string;
     clientUserId: string;
     agentName: string;
-    clientName: string;
-    email: string;
+    clientLabel: string;
   } | null> {
     const db = requireSql();
     const rows = (await db`
-      SELECT i.agent_user_id, i.client_user_id, i.email,
-             a.name AS agent_name, c.name AS client_name
+      SELECT i.agent_user_id, i.client_user_id,
+             a.name AS agent_name, c.name AS client_label
       FROM client_invites i
       JOIN users a ON a.id = i.agent_user_id
       JOIN users c ON c.id = i.client_user_id
@@ -640,9 +647,8 @@ export class PgStore implements Store {
     `) as {
       agent_user_id: string;
       client_user_id: string;
-      email: string;
       agent_name: string;
-      client_name: string;
+      client_label: string;
     }[];
     const row = rows[0];
     if (!row) return null;
@@ -650,8 +656,10 @@ export class PgStore implements Store {
       agentUserId: row.agent_user_id,
       clientUserId: row.client_user_id,
       agentName: row.agent_name,
-      clientName: row.client_name,
-      email: row.email,
+      // users.name on a managed client IS the agent-authored label — no real
+      // name is stored. Named clientLabel so a caller cannot mistake it for the
+      // claimer's identity, which Osprey does not know.
+      clientLabel: row.client_label,
     };
   }
 
@@ -679,6 +687,7 @@ export class PgStore implements Store {
   async claimInvite(params: {
     tokenHash: string;
     email: string;
+    name: string;
     passwordHash: string;
     policyVersion: string;
     disclosure: string;
@@ -697,6 +706,11 @@ export class PgStore implements Store {
       promoted AS (
         UPDATE users u
            SET email         = ${params.email},
+               -- Until this moment users.name held the AGENT's label for the
+               -- search, because no real name was ever collected. The claimer
+               -- supplies their own here — the first personal detail Osprey
+               -- has, given by them, after the recorded consent.
+               name          = ${params.name},
                password_hash = ${params.passwordHash},
                status        = 'active'
           FROM claimed c

@@ -236,15 +236,17 @@ export default function TermsOfService() {
           <h2 className="text-lg font-semibold text-white">16. Agent and brokerage accounts</h2>
           <p className="mt-2">If you use Osprey as a real-estate agent to manage clients:</p>
           <p className="mt-4">
-            <span className="text-white">You are responsible for your authority to do so.</span> You
-            represent that you have a genuine professional relationship with each person you add as a
-            client, and that you are entitled to hold and enter the information you provide about
-            them. Do not add someone who is not your client.
+            <span className="text-white">Do not enter personal information about your clients.</span>{" "}
+            Osprey does not collect information about a person until that person creates their own
+            account. A client search holds investment criteria and a label you choose, and the label
+            is free text you control — keep personal details out of it. Do not use Osprey as a place
+            to store records about people who are not your own clients.
           </p>
           <p className="mt-4">
-            <span className="text-white">You deliver invitations yourself.</span> Osprey does not
-            contact your clients. You are responsible for how you send an invitation link and to whom.
-            Do not send one to anyone who has not asked you to manage their property search.
+            <span className="text-white">You deliver referral links yourself.</span> Osprey does not
+            contact your clients and is not told who you send a link to. You are responsible for how
+            you send it and to whom. Do not send one to anyone who has not asked you to manage their
+            property search.
           </p>
           <p className="mt-4">
             <span className="text-white">Client accounts belong to the client.</span> Once a client

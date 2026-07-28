@@ -59,12 +59,8 @@ export async function POST(
 
   const check = canMintInvite(scoped.scope, client);
   if (!check.ok) {
-    // Everything except a missing contact address answers as a flat 404. The
-    // code is logged, never returned: a caller that can tell "already claimed"
-    // from "not your client" can enumerate both.
-    if (check.code === "no_contact_email") {
-      return NextResponse.json({ error: check.reason }, { status: 400, ...NO_STORE });
-    }
+    // Every refusal is a flat 404. The code is logged, never returned: a caller
+    // that can tell "already claimed" from "not your client" can enumerate both.
     console.warn("Invite refused:", {
       code: check.code,
       agentUserId: scoped.userId,
@@ -76,12 +72,12 @@ export async function POST(
   const minted = mintInviteToken();
 
   try {
+    // No recipient. This is a referral link, and Osprey never learns who the
+    // agent hands it to — that is what lets us say we store nothing about a
+    // person until they create their own account.
     await store.mintInvite({
       agentUserId: scoped.userId,
       clientUserId: clientId,
-      // From the check, not the row: the ok branch carries the validated
-      // address, so there is no null to talk TypeScript out of here.
-      email: check.email,
       tokenHash: minted.tokenHash,
       expiresAt: minted.expiresAt,
     });
@@ -101,7 +97,6 @@ export async function POST(
     {
       url: `${req.nextUrl.origin}/claim/${minted.token}`,
       expiresAt: minted.expiresAt.toISOString(),
-      email: check.email,
     },
     NO_STORE,
   );

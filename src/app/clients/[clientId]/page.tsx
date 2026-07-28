@@ -124,8 +124,7 @@ export default async function ClientDetailPage({
           <div className="mt-6">
             <InviteClientCard
               clientId={clientId}
-              clientName={profile.name}
-              clientEmail={client.clientEmail}
+              clientLabel={client.label ?? profile.name}
               status={client.status}
             />
           </div>

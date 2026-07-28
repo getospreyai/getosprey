@@ -122,7 +122,7 @@ export default async function ClaimPage({
           ))}
         </div>
 
-        <ClaimForm token={token} suggestedEmail={invite.email} />
+        <ClaimForm token={token} />
 
         <p className="mt-6 text-xs leading-5 text-white/35">
           By claiming this account you agree to Osprey&apos;s{" "}

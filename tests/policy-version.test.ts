@@ -88,6 +88,18 @@ describe("the disclosure recorded at claim time", () => {
     expect(AGENT_ACCESS_DISCLOSURE.toLowerCase()).toContain("telegram");
   });
 
+  it("states the referral promise: nothing was held before the claim", () => {
+    // The whole point of the referral model (2026-07-27) is that Osprey holds
+    // nothing about a person until they claim an account themselves. That claim
+    // is only true while agent_clients.client_email and client_invites.email do
+    // not exist — which scripts/verify-schema.mjs FORBIDS. This test and that
+    // check are the two halves: one asserts we say it, the other asserts it is
+    // true of the database.
+    const lower = AGENT_ACCESS_DISCLOSURE.toLowerCase();
+    expect(lower).toContain("has never held your name or your email address");
+    expect(lower).toContain("was not told who your agent sent this link to");
+  });
+
   it("says what happens to reports and share links on disconnect", () => {
     // DECISION-3. The client is told the asymmetry up front rather than
     // discovering it when a link they forwarded stops resolving.

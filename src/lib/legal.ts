@@ -104,7 +104,8 @@ export function policyVersionIsReviewed(): boolean {
  * than promising a wider one.
  */
 export const AGENT_ACCESS_DISCLOSURE = [
-  "Your agent will be able to see: your buy box (the markets, property types, and price range you're looking at), your financing assumptions, your minimum monthly cash-flow target, every listing Osprey underwrites for you, and any property reports or share links generated for your account.",
+  "Your agent set up this account without any information about you — Osprey has never held your name or your email address, and was not told who your agent sent this link to. That changes when you claim it: the name and email you enter here become part of the account your agent can see.",
+  "Your agent will be able to see: your name and email address, your buy box (the markets, property types, and price range you're looking at), your financing assumptions, your minimum monthly cash-flow target, every listing Osprey underwrites for you, and any property reports or share links generated for your account.",
   "Your agent cannot read your conversations with our Telegram bot or the notes we keep from them, cannot change your email or password, cannot delete your account, cannot see your login history, and cannot see anything about any other Osprey user.",
   "You can disconnect from your agent at any time in Settings. Disconnecting immediately ends their access to everything above. Reports your agent already generated stay with them; any share links on your account stop working, and you can create new ones at any time.",
 ].join("\n\n");

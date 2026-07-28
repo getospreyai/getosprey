@@ -65,14 +65,19 @@ export default function PrivacyPolicy() {
               have access to your plain-text password.
             </li>
             <li>
-              <span className="text-white">Information your real-estate agent provides about you</span>{" "}
-              — if a real-estate agent or brokerage uses Osprey to manage client relationships, they
-              may create an account on your behalf and enter information about you, including your
-              name, an email address at which they can reach you, and the investment criteria they
-              understand you to have: target markets, property types, price range, financing
-              assumptions, and a minimum cash-flow target. We receive this information from the
-              agent, not from you. We do not contact you about it; if your agent wants you to have
-              access to the account, they send you an invitation link themselves. See section 13.
+              <span className="text-white">
+                Searches a real-estate agent sets up before you have an account
+              </span>{" "}
+              — if a real-estate agent or brokerage uses Osprey to work with clients, they can set
+              up a property search and give it a label of their own choosing. That search holds
+              investment criteria — target markets, property types, price range, financing
+              assumptions, and a minimum cash-flow target — and nothing else.{" "}
+              <span className="text-white">
+                We do not ask for, receive, or store your name, your email address, or any other
+                information about you before you create your own account.
+              </span>{" "}
+              If your agent wants you to have the account, they send you a referral link
+              themselves; we are not told who they send it to. See section 13.
             </li>
             <li>
               <span className="text-white">Investor profile</span> — the criteria you configure,
@@ -325,13 +330,20 @@ export default function PrivacyPolicy() {
             set up your account or you accepted an invitation from one.
           </p>
           <p className="mt-4">
-            <span className="text-white">How the connection is made.</span> An agent can create an
-            account for you and configure it on your behalf. An account in that state has no password
-            and cannot be signed into. If your agent wants you to take control of it, they send you an
-            invitation link directly — we never send it for them. When you use that link, you choose
-            your own email address and password, you are shown exactly what your agent will be able to
-            see, and you must affirmatively agree before the account becomes yours. We record that
-            agreement, including the date and the exact text you were shown.
+            <span className="text-white">We hold nothing about you until you act.</span> Before you
+            claim an account, all that exists is a property search your agent configured and
+            labelled. There is no name, no email address, and no record of you — we do not know who
+            you are and have no way to contact you. If you never claim the account, we never hold
+            anything about you at all.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">How the connection is made.</span> Your agent sends you a
+            referral link directly — we never send it for them, and we are not told who they gave it
+            to. When you use that link, you choose your own email address and password, you are
+            shown exactly what your agent will be able to see, and you must affirmatively agree
+            before the account becomes yours. We record that agreement, including the date and the
+            exact text you were shown. That is the first moment any information about you exists
+            here, and it comes from you.
           </p>
           <p className="mt-4">
             <span className="text-white">What your agent can see.</span> While you are connected to an
@@ -366,13 +378,13 @@ export default function PrivacyPolicy() {
             sure none of them keeps working. You can create new ones at any time.
           </p>
           <p className="mt-4">
-            <span className="text-white">If you never claim your account.</span> If your agent set up
-            an account for you and you never accept an invitation, the account stays under your
-            agent&apos;s management and cannot be signed into. You may contact us at{" "}
+            <span className="text-white">If you never claim the account.</span> Nothing happens, and
+            there is nothing of yours to delete — the search remains your agent&apos;s, holding only
+            the criteria and label they entered. You can still contact us at{" "}
             <a href="mailto:privacy@getosprey.ai" className="underline hover:text-white">
               privacy@getosprey.ai
             </a>{" "}
-            to ask what information we hold about you or to have it deleted.
+            with any question about your information.
           </p>
         </section>
 
@@ -386,12 +398,12 @@ export default function PrivacyPolicy() {
             retain it only as required by law.
           </p>
           <p className="mt-2">
-            Where an agent created an account for you, we retain the contact address they supplied and
-            a record of the invitation for as long as the agent relationship exists, and afterwards as
-            needed to show how the account was created. If you delete your account, we keep an
-            anonymized record that a consent was given — the date, and the text you were shown — with
-            your identifying information removed. We keep it because it is the only record of what you
-            agreed to, and we cannot answer a question about that agreement without it.
+            Referral links your agent created are retained as a record of how an account came to
+            exist. They contain no contact details — we never held any. If you delete your account,
+            we keep an anonymized record that a consent was given — the date, and the text you were
+            shown — with your identifying information removed. We keep it because it is the only
+            record of what you agreed to, and we cannot answer a question about that agreement
+            without it.
           </p>
         </section>
 
