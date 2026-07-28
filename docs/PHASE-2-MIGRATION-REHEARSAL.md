@@ -3,9 +3,28 @@
 Ship gate #4 (`docs/AGENT-ACCOUNTS-PLAN.md` §9a): no migration reaches
 production until it has run against a Neon branch carrying real data.
 
-**Not executed.** These are steps for a human to run locally. Nothing in this
-document should be run against production, and the tooling is built so that it
-cannot be — see step 4.
+## EXECUTED 2026-07-27 — PASSED
+
+Ran end to end against the `ep-sweet-mud-a64la88a` branch (2 users, 2 profiles,
+44 verdicts). Results:
+
+| Step | Result |
+|---|---|
+| 3. Baseline | 9 expected columns absent, `client_invites` / `client_consents` / `admin_audit` all "table not present" — a clean pre-migration branch |
+| 4. `rehearse-migration.mts` | `ensureSchema() completed in 409ms` |
+| 5. Verify | **All** expected columns PASS, both new nullable columns PASS, both delete rules PASS (`SET NULL`), `client_invites.token` still absent, **row counts identical to baseline** (2 / 2 / 44) |
+| 5b. Constraint | `users_status_check` now reads `active, managed, invited, suspended` — the v1a widening applied cleanly |
+| 6. App | Signed in as a solo investor, dashboard rendered its verdict feed, `/settings` loaded with **no** agent card (flag unset) |
+| 6b. Admin v1a | `/admin` 404s for a signed-in non-admin; renders the metadata list for an allowlisted one; two `admin_audit` `view_users` rows written |
+
+Nothing was run against production. `scripts/dev-branch.mjs` (added the same
+day) is what makes step 6 executable on Windows and refuses to start if
+`NEON_BRANCH_URL` and `DATABASE_URL` resolve to the same database.
+
+**Teardown (step 7) is still outstanding** — the branch is deliberately kept
+alive to seed test accounts and to develop admin v1b against. Delete it when
+that work lands; a forgotten branch is a copy-on-write copy of real user data
+sitting somewhere nobody is thinking about.
 
 Follows the Phase 0 procedure in `AGENT-ACCOUNTS-PLAN.md` §9b, which is already
 proven: the ALTER path was verified in production on 2026-07-26.
@@ -14,7 +33,7 @@ proven: the ALTER path was verified in production on 2026-07-26.
 
 ## What this wave actually does
 
-Phase 2 adds two tables and nothing else:
+Phase 2 adds two tables:
 
 | Object | Type |
 |---|---|
@@ -25,9 +44,20 @@ Phase 2 adds two tables and nothing else:
 | `client_consents_user_idx` | `CREATE INDEX IF NOT EXISTS` |
 | `client_consents_kind_check` | `ADD CONSTRAINT`, guarded by a `pg_constraint` lookup |
 
-**No `ALTER TABLE` on an existing table. No column added to a table that holds
-user data. No `NOT NULL` dropped. No data migrated.** This is materially lower
-risk than Phase 0, which altered `users` and made `password_hash` nullable.
+Two later waves ride along with it and are **not** as inert, so the original
+"no ALTER on an existing table" claim below no longer holds unqualified:
+
+| Object | Type | Added by |
+|---|---|---|
+| `client_consents.user_id` / `.agent_user_id` | `DROP NOT NULL` + FK recreated `ON DELETE SET NULL` | §A6 fix (`ea7affd`) |
+| `admin_audit` + `admin_audit_created_idx` | `CREATE TABLE` / `CREATE INDEX` | Admin v1a |
+| `users_status_check` | `DROP CONSTRAINT` + `ADD CONSTRAINT` including `'suspended'` | Admin v1a |
+
+The `users_status_check` recreation is the only one that touches a table holding
+user data. It re-validates every row of `users`, and every existing status is
+already in the new set, so it is expected to be a no-op that succeeds — which is
+what the rehearsal above confirmed. The `client_consents` ALTERs are guarded on
+`confdeltype = 'c'`, so they convert once and then stop matching.
 
 It is worth being clear about why we rehearse anyway. The risk here is not that
 the migration corrupts data — it cannot reach any. It is that `ensureSchema()`
