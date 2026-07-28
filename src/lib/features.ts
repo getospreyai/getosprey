@@ -12,3 +12,15 @@
 export function agentAccountsEnabled(): boolean {
   return process.env.OSPREY_AGENT_ACCOUNTS === "true";
 }
+
+/**
+ * True when the operator surface at /admin is exposed.
+ *
+ * Same dark-ship discipline, and the same division of labour: this flag decides
+ * whether the routes EXIST, `requireAdmin()` decides who may use them. Both
+ * must pass. Turning this on does not make anyone an admin, and turning it off
+ * is a complete kill switch that needs no deploy.
+ */
+export function adminUiEnabled(): boolean {
+  return process.env.OSPREY_ADMIN_UI === "true";
+}

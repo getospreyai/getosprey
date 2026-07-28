@@ -173,3 +173,66 @@ row that matters.
 
 v1a is deliberately read-only so the guard and the audit plumbing are proven
 before anything can change state.
+
+## 10. Build status
+
+### v1a — BUILT 2026-07-27, on branch `phase2-invites`, dark
+
+Landed: `src/lib/admin.ts` (pure allowlist decision) + `src/lib/require-admin.ts`
+(session-bound entry point), `adminUiEnabled()` in `src/lib/features.ts`,
+`admin_audit` in both schema files with three columns in `verify-schema.mjs`
+`EXPECTED`, `PgStore.listUsersForAdmin()` + `writeAdminAudit()`, the read-only
+`/admin` user list, `/admin/:path*` on the proxy matcher, and both env vars
+documented in `.env.example`. 13 tests in `tests/admin.test.ts`; 219 total.
+`npm run build`, `tsc --noEmit`, and `eslint` all clean.
+
+Two notes on what was built:
+
+**The split into `admin.ts` / `require-admin.ts` was forced, and is right.**
+Importing `@/auth` makes a module unloadable under vitest (next-auth pulls in
+`next/server`), so a guard with the session lookup inline would have been
+untestable — the same reason `scope.ts` and `request-scope.ts` are separate. The
+allowlist decision, which is the whole of the authorization logic, is now pure
+and exhaustively tested.
+
+**`admin_audit` is written in v1a even though v1a has no mutations.** `/admin`
+records a `view_users` row on every load. That proves the write path before
+v1b's promote/suspend depend on it, and the full user list is the broadest read
+in the product — worth recording on its own.
+
+The `users_status_check` widening for v1b's suspend landed here too, so the
+whole admin wave is one migration to rehearse. Permitting `'suspended'` is not
+the same as being able to set it: nothing writes it, and `canActAsViewer()`
+already allowlists only `'active'`.
+
+### Before v1a can be turned on
+
+1. **Rehearse the migration on a Neon branch** — `admin_audit` (pure
+   `CREATE TABLE`) plus the `users_status_check` DROP/ADD. The constraint change
+   is the one worth watching: it re-validates every row of `users`, and every
+   existing status is in the new set, so it should be a no-op that succeeds.
+   Follow `docs/PHASE-2-MIGRATION-REHEARSAL.md`.
+2. Set `OSPREY_ADMIN_EMAILS` and `OSPREY_ADMIN_UI=true` in Vercel.
+
+**Unverified in a browser, deliberately.** `src/auth.ts:40` calls
+`ensureSchema()` on the sign-in path, so signing in to a local dev server whose
+`DATABASE_URL` points at production applies every pending migration to
+production — which is precisely what ship gate #4 exists to prevent. The `/admin`
+route's behaviour was left to the build output, the guard tests, and a review of
+the three-line `notFound()` path rather than exercised against prod by accident.
+Verify it against the Neon branch during the rehearsal, where signing in is the
+point.
+
+### Not built (v1b, v1c)
+
+Promote/demote, suspend/reactivate, the self-action guard, `/admin/users/[id]`,
+and the waitlist → invite flow.
+
+**§6 needs revisiting before v1c.** It says to build ONE invite primitive with a
+`kind` discriminator rather than `client_invites` plus an admin table — but
+agent-accounts Phase 2 has already shipped `client_invites`, so that
+recommendation is now advice about a decision already taken. The realistic path
+is to reuse `src/lib/invite-token.ts` (mint/hash/expiry are generic) and add a
+separate `signup_invites` table, or to generalise `client_invites` with a
+nullable `client_user_id` and a `kind` column. Decide before writing v1c, not
+during.

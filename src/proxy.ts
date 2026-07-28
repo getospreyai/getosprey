@@ -17,5 +17,9 @@ export const config = {
     "/settings/:path*",
     "/onboarding/:path*",
     "/clients/:path*",
+    // /admin redirects an anonymous visitor to /login like any other signed-in
+    // page. That is not the access control — requireAdmin() re-checks the
+    // allowlist server-side on every request and 404s a signed-in non-admin.
+    "/admin/:path*",
   ],
 };

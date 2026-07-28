@@ -62,6 +62,26 @@ export interface ShareLinkRow {
   createdAt: string;
 }
 
+/**
+ * One row of the operator user list — account metadata ONLY.
+ *
+ * The absence of a buy box, cash-flow bar, or verdict count here is the
+ * privacy boundary from docs/ADMIN-UI-PLAN.md §4, not an oversight. Adding a
+ * financial field to this interface is a privacy-policy change; see the note
+ * above `listUsersForAdmin()`.
+ */
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  telegramBound: boolean;
+  /** Live (non-archived) roster rows where this user is the agent. */
+  clientCount: number;
+}
+
 /** Old vs new price captured by a diff-aware saveSnapshot() call. */
 export interface PriceChangeInfo {
   oldPrice: number;
@@ -1063,5 +1083,91 @@ export class PgStore implements Store {
       revoked: row.revoked,
       createdAt: row.created_at,
     }));
+  }
+
+  // --- Admin (operator surface) -------------------------------------------
+  //
+  // THE PRIVACY BOUNDARY IS IN THE SELECT LIST, and that is deliberate.
+  //
+  // docs/ADMIN-UI-PLAN.md §4: an operator may see account METADATA — email,
+  // name, role, status, created_at, whether Telegram is bound, client count —
+  // and may NOT see financial data: buy box, financing profiles, cash-flow bar,
+  // verdicts, property analysis, reports, share links.
+  //
+  // That line is what keeps the admin surface OUTSIDE the privacy/ToS
+  // re-review that agent accounts Phase 2 already requires. Enforcing it by
+  // rendering less in the UI would not survive one refactor. Enforcing it by
+  // never selecting the columns means a future page cannot display what it was
+  // never given. If a genuine need to cross this line appears, it is its own
+  // decision with its own copy review — not a convenience patch to this query.
+  //
+  // Note what is NOT joined: investor_profiles.profile. Only the presence of
+  // telegram_chat_id, as a boolean, which is an account fact rather than a
+  // financial one.
+
+  /**
+   * Account metadata for every user, newest first.
+   *
+   * Unpaginated. Correct at the current scale (tens of users) and wrong at a
+   * few thousand — when the list needs a scrollbar it needs a LIMIT/OFFSET and
+   * a filter, and this comment is the marker for whoever notices first.
+   */
+  async listUsersForAdmin(): Promise<AdminUserRow[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT u.id, u.email, u.name, u.role, u.status, u.created_at,
+             (p.telegram_chat_id IS NOT NULL) AS telegram_bound,
+             COALESCE(c.n, 0)::int            AS client_count
+      FROM users u
+      LEFT JOIN investor_profiles p ON p.user_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT count(*) AS n
+        FROM agent_clients ac
+        WHERE ac.agent_user_id = u.id AND ac.archived_at IS NULL
+      ) c ON true
+      ORDER BY u.created_at DESC
+    `) as {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      status: string;
+      created_at: string;
+      telegram_bound: boolean;
+      client_count: number;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      name: r.name,
+      role: r.role,
+      status: r.status,
+      createdAt: r.created_at,
+      telegramBound: r.telegram_bound,
+      clientCount: r.client_count,
+    }));
+  }
+
+  /**
+   * Append an operator action to the audit log.
+   *
+   * v1b onwards must call this **inside the same transaction as the change it
+   * describes** (ADMIN-UI-PLAN.md §7). An audit write that can fail
+   * independently will eventually be missing exactly the row that matters. v1a
+   * has no mutations, so this is called on its own — which is also what proves
+   * the write path works before anything depends on it.
+   */
+  async writeAdminAudit(entry: {
+    actorEmail: string;
+    action: string;
+    targetUser?: string | null;
+    detail?: unknown;
+  }): Promise<void> {
+    const db = requireSql();
+    await db`
+      INSERT INTO admin_audit (actor_email, action, target_user, detail)
+      VALUES (${entry.actorEmail}, ${entry.action}, ${entry.targetUser ?? null},
+              ${entry.detail === undefined ? null : JSON.stringify(entry.detail)}::jsonb)
+    `;
   }
 }

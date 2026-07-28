@@ -383,6 +383,53 @@ export async function ensureSchema(): Promise<void> {
       END $$
     `,
 
+    // -----------------------------------------------------------------------
+    // Admin UI v1a (2026-07-27) — the operator surface. docs/ADMIN-UI-PLAN.md.
+    // -----------------------------------------------------------------------
+
+    // Append-only. No update or delete path, ever — an audit log you can edit
+    // is not an audit log.
+    //
+    // actor_email rather than a user id: the operator is identified by the env
+    // allowlist, not by a database role (ADMIN-UI-PLAN.md §3), so the email is
+    // the only identity the authorization decision was actually made on.
+    // Recording a user id would record something the check never consulted.
+    sql`
+      CREATE TABLE IF NOT EXISTS admin_audit (
+        id           BIGSERIAL PRIMARY KEY,
+        actor_email  TEXT NOT NULL,
+        action       TEXT NOT NULL,
+        target_user  UUID,
+        detail       JSONB,
+        created_at   TIMESTAMPTZ DEFAULT now()
+      )
+    `,
+
+    sql`CREATE INDEX IF NOT EXISTS admin_audit_created_idx ON admin_audit (created_at DESC)`,
+
+    // Widen the status constraint for v1b's suspend action, landed with v1a so
+    // the whole admin wave is ONE migration to rehearse. Permitting a value is
+    // not the same as being able to set it: nothing writes 'suspended' yet, and
+    // canActAsViewer() already allowlists 'active', so such a row would be
+    // refused a session the moment one can exist.
+    //
+    // Conditional on the constraint not already mentioning 'suspended' so it
+    // converts exactly once — an unconditional DROP + ADD would re-validate
+    // every row of `users` on every ensureSchema() run.
+    sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'users_status_check'
+            AND pg_get_constraintdef(oid) LIKE '%suspended%'
+        ) THEN
+          ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check;
+          ALTER TABLE users ADD CONSTRAINT users_status_check
+            CHECK (status IN ('active', 'managed', 'invited', 'suspended'));
+        END IF;
+      END $$
+    `,
+
   ]);
 
   schemaReady = true;

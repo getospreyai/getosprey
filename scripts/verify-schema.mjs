@@ -45,6 +45,11 @@ const EXPECTED = [
   ["client_invites", "revoked_at"],
   ["client_consents", "policy_version"],
   ["client_consents", "disclosure"],
+
+  // Wave: admin UI v1a (2026-07-27).
+  ["admin_audit", "actor_email"],
+  ["admin_audit", "action"],
+  ["admin_audit", "target_user"],
   // Pre-existing core columns, as a sanity check that we are pointed at a real
   // Osprey database and not an empty one.
   ["users", "email"],
@@ -93,6 +98,7 @@ const COUNT_TABLES = [
   "scan_runs",
   "client_invites",
   "client_consents",
+  "admin_audit",
 ];
 
 const useBranch = process.argv.includes("--branch");
