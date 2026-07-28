@@ -10,6 +10,13 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { adminEmails, isAdminEmail } from "@/lib/admin";
+import {
+  isAssignableRole,
+  isAssignableStatus,
+  isSelfAction,
+  ASSIGNABLE_ROLES,
+  ASSIGNABLE_STATUSES,
+} from "@/lib/admin-actions";
 import { adminUiEnabled } from "@/lib/features";
 
 const ADMIN = "dylaan.cannon@gmail.com";
@@ -120,5 +127,70 @@ describe("adminUiEnabled — the kill switch", () => {
     delete process.env.OSPREY_ADMIN_EMAILS;
     expect(adminUiEnabled()).toBe(true);
     expect(isAdminEmail(ADMIN)).toBe(false);
+  });
+});
+
+// --- v1b -------------------------------------------------------------------
+
+describe("assignable values — what an operator may set", () => {
+  it("accepts only investor and agent as roles", () => {
+    expect(ASSIGNABLE_ROLES).toEqual(["investor", "agent"]);
+    expect(isAssignableRole("investor")).toBe(true);
+    expect(isAssignableRole("agent")).toBe(true);
+  });
+
+  it("refuses brokerage_admin even though the column permits it", () => {
+    // users_role_check allows it, but Phase 4 does not exist — granting it
+    // would create an account with a role nothing in the product implements.
+    expect(isAssignableRole("brokerage_admin")).toBe(false);
+  });
+
+  it("accepts only active and suspended as statuses", () => {
+    expect(ASSIGNABLE_STATUSES).toEqual(["active", "suspended"]);
+    expect(isAssignableStatus("active")).toBe(true);
+    expect(isAssignableStatus("suspended")).toBe(true);
+  });
+
+  it("refuses the agent-managed lifecycle statuses", () => {
+    // 'managed' and 'invited' are owned by the agent-accounts flow. An operator
+    // hand-setting one produces a client with no roster row and no invite — a
+    // broken account that looks deliberate.
+    expect(isAssignableStatus("managed")).toBe(false);
+    expect(isAssignableStatus("invited")).toBe(false);
+  });
+
+  it("refuses non-strings and near-misses", () => {
+    for (const bad of [null, undefined, 42, {}, [], "", "AGENT", "Active", "admin", "root"]) {
+      expect(isAssignableRole(bad), `role=${JSON.stringify(bad)}`).toBe(false);
+      expect(isAssignableStatus(bad), `status=${JSON.stringify(bad)}`).toBe(false);
+    }
+  });
+});
+
+describe("isSelfAction — guardrail #1", () => {
+  it("recognises the operator's own account", () => {
+    expect(isSelfAction(ADMIN, ADMIN)).toBe(true);
+  });
+
+  it("ignores case and surrounding whitespace on both sides", () => {
+    // The allowlist lower-cases; a users row may not. A guard that missed on
+    // casing would let an operator suspend themselves and lock themselves out
+    // of the only tool that could undo it.
+    expect(isSelfAction(ADMIN, "Dylaan.Cannon@Gmail.com")).toBe(true);
+    expect(isSelfAction(ADMIN, `  ${ADMIN} `)).toBe(true);
+  });
+
+  it("does not fire on a different account", () => {
+    expect(isSelfAction(ADMIN, OTHER)).toBe(false);
+  });
+
+  it("does not fire on a missing target email", () => {
+    // Fails OPEN here, deliberately, and that is safe: this function only ever
+    // BLOCKS an action. A null target email means the row is not the operator's
+    // account, so there is nothing to protect them from — and the SQL WHERE
+    // clause is the real guard regardless.
+    expect(isSelfAction(ADMIN, null)).toBe(false);
+    expect(isSelfAction(ADMIN, undefined)).toBe(false);
+    expect(isSelfAction(ADMIN, "")).toBe(false);
   });
 });

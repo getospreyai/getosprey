@@ -223,10 +223,51 @@ the three-line `notFound()` path rather than exercised against prod by accident.
 Verify it against the Neon branch during the rehearsal, where signing in is the
 point.
 
-### Not built (v1b, v1c)
+### v1b — BUILT and VERIFIED 2026-07-27
 
-Promote/demote, suspend/reactivate, the self-action guard, `/admin/users/[id]`,
-and the waitlist → invite flow.
+Promote/demote agent, suspend/reactivate, the self-action guard, and the audit
+trail rendered in the product. `src/lib/admin-actions.ts` (pure validation +
+self-action guard), `POST /api/admin/users/[id]/role`, `POST
+/api/admin/users/[id]/status`, `PgStore.adminSetUserRole` /
+`adminSetUserStatus` / `listAdminAudit`, `AdminUserActions.tsx`. 228 tests.
+
+**Guardrail #2 is structural, not procedural.** Both mutations are ONE
+statement: a CTE that performs the UPDATE and an INSERT that draws its rows from
+that CTE's `RETURNING`. The audit row cannot be written unless the update
+returned a row, and the update cannot commit without the audit row, because they
+are the same statement. A transaction would also work, but this leaves no
+ordering to get wrong and no early return that can skip the second half.
+
+**Guardrail #1 is in the WHERE clause**, not in the route and not in the button:
+`AND lower(email) <> lower(<actor>)`. The disabled button is a courtesy. Verified
+by forging the request past it — see below.
+
+Deliberate narrowing beyond the plan: `brokerage_admin` is refused even though
+`users_role_check` permits it (Phase 4 does not exist, so it would create an
+account with a role nothing implements), and `managed` / `invited` are refused as
+statuses (they are lifecycle states owned by agent accounts; overwriting one
+produces a client with no roster row and no way to sign in).
+
+#### Verification against the Neon branch, with the seeded fixtures
+
+| Check | Result |
+|---|---|
+| Promote a user to agent from the UI | `POST .../role` → 200, role changed, audit row written |
+| Self-suspend, forged past the disabled button | **409, nothing changed** |
+| Self-promote, same | **409, nothing changed** |
+| `role: "brokerage_admin"` | 400 at validation, never reaches SQL |
+| Nonexistent user id | 409 with a message **byte-identical** to the self-action refusal — no enumeration signal |
+| **Guardrail #5 — does suspension actually revoke?** | Signed in as a test client, confirmed the dashboard rendered, suspended the account, reloaded **without re-authenticating** → bounced to `/login`. Same cookie, no sign-out, no session store to purge. |
+| Suspended account signing back in | Refused with the generic "Incorrect email or password" — a suspended account is indistinguishable from a wrong password |
+
+Guardrail #5 was the one the plan flagged as never having been exercised in
+anger. It has now been.
+
+### Not built (v1c)
+
+`/admin/users/[id]` detail page and the waitlist → invite flow. The audit trail
+is rendered on `/admin` itself for now, which covers what the detail page was
+mainly for.
 
 **§6 needs revisiting before v1c.** It says to build ONE invite primitive with a
 `kind` discriminator rather than `client_invites` plus an admin table — but

@@ -13,7 +13,9 @@ import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import { requireAdmin } from "@/lib/require-admin";
 import { adminUiEnabled } from "@/lib/features";
-import { PgStore, type AdminUserRow } from "@/osprey/pg-store";
+import { isSelfAction } from "@/lib/admin-actions";
+import AdminUserActions from "@/components/AdminUserActions";
+import { PgStore, type AdminUserRow, type AdminAuditRow } from "@/osprey/pg-store";
 
 export const metadata = { title: "Admin — Osprey" };
 
@@ -50,7 +52,7 @@ function StatusBadge({ status }: { status: string }) {
   return <Pill text={status} tone={tone} />;
 }
 
-function UserRow({ user }: { user: AdminUserRow }) {
+function UserRow({ user, actorEmail }: { user: AdminUserRow; actorEmail: string }) {
   return (
     <tr className="border-t border-white/[0.07]">
       <td className="py-3 pr-4">
@@ -69,10 +71,43 @@ function UserRow({ user }: { user: AdminUserRow }) {
       <td className="py-3 pr-4 text-white/70">
         {user.telegramBound ? "Bound" : <span className="text-white/30">—</span>}
       </td>
-      <td className="py-3 text-white/50">
+      <td className="py-3 pr-4 text-white/50">
         {new Date(user.createdAt).toLocaleDateString()}
       </td>
+      <td className="py-3">
+        <AdminUserActions
+          userId={user.id}
+          role={user.role}
+          status={user.status}
+          isSelf={isSelfAction(actorEmail, user.email)}
+        />
+      </td>
     </tr>
+  );
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  view_users: "viewed the user list",
+  promote_agent: "promoted to agent",
+  demote_agent: "demoted to investor",
+  suspend: "suspended",
+  reactivate: "reactivated",
+};
+
+function AuditRow({ entry }: { entry: AdminAuditRow }) {
+  const label = ACTION_LABELS[entry.action] ?? entry.action;
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-2 border-t border-white/[0.07] py-2 text-xs">
+      <span className="text-white/50">{new Date(entry.createdAt).toLocaleString()}</span>
+      <span className="text-white/70">{entry.actorEmail}</span>
+      <span className="text-white/45">{label}</span>
+      {entry.targetName && <span className="text-white/70">{entry.targetName}</span>}
+      {/* A target id with no name means the account was deleted after the fact.
+          The audit row outliving it is the point of an append-only log. */}
+      {!entry.targetName && entry.targetUser && (
+        <span className="text-white/30">(deleted account)</span>
+      )}
+    </li>
   );
 }
 
@@ -97,16 +132,18 @@ export default async function AdminPage() {
   const store = new PgStore();
   const users = await store.listUsersForAdmin();
 
-  // v1a has no mutations, so this is the only audit write — which is precisely
-  // what proves the write path works before v1b's promote/suspend depend on it.
-  // Reading the full user list is also worth recording on its own: it is the
-  // broadest read in the product.
+  // Reading the full user list is the broadest read in the product, so it is
+  // recorded on its own rather than only when something changes.
   await store.writeAdminAudit({
     actorEmail: admin.email,
     action: "view_users",
     detail: { count: users.length },
   });
 
+  // Read AFTER the write above, so an operator's own arrival is the first line
+  // they see — the log is visibly live rather than something they have to
+  // trust is being written.
+  const audit = await store.listAdminAudit(20);
   const agents = users.filter((u) => u.role === "agent").length;
 
   return (
@@ -131,22 +168,36 @@ export default async function AdminPage() {
               <th className="pb-3 pr-4 font-medium">Status</th>
               <th className="pb-3 pr-4 font-medium">Clients</th>
               <th className="pb-3 pr-4 font-medium">Telegram</th>
-              <th className="pb-3 font-medium">Joined</th>
+              <th className="pb-3 pr-4 font-medium">Joined</th>
+              <th className="pb-3 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => (
-              <UserRow key={u.id} user={u} />
+              <UserRow key={u.id} user={u} actorEmail={admin.email} />
             ))}
           </tbody>
         </table>
       </div>
 
+      <div className={`${cardClass} mt-6`}>
+        <h2 className="text-sm font-medium text-white">Recent operator actions</h2>
+        <p className="mt-1 text-xs text-white/40">
+          Append-only. There is no edit or delete path — an audit log you can edit is not
+          an audit log.
+        </p>
+        <ul className="mt-3">
+          {audit.map((e, i) => (
+            <AuditRow key={`${e.createdAt}-${i}`} entry={e} />
+          ))}
+        </ul>
+      </div>
+
       <p className="mt-6 max-w-2xl text-xs leading-relaxed text-white/35">
         Account metadata only. Buy boxes, financing, cash-flow targets, verdicts, and
         reports are deliberately not shown here and are not read by this page — see
-        docs/ADMIN-UI-PLAN.md §4. Read-only in v1a; promote, suspend, and waitlist
-        invites arrive in v1b and v1c.
+        docs/ADMIN-UI-PLAN.md §4. Suspending an account revokes its session on the next
+        request. Waitlist invites arrive in v1c.
       </p>
     </Shell>
   );

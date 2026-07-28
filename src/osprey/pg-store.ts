@@ -82,6 +82,18 @@ export interface AdminUserRow {
   clientCount: number;
 }
 
+/** One entry from the append-only operator audit log. */
+export interface AdminAuditRow {
+  actorEmail: string;
+  action: string;
+  targetUser: string | null;
+  /** Joined for display. Null once the target account is deleted — the audit
+   *  row deliberately outlives it. */
+  targetName: string | null;
+  detail: unknown;
+  createdAt: string;
+}
+
 /** Old vs new price captured by a diff-aware saveSnapshot() call. */
 export interface PriceChangeInfo {
   oldPrice: number;
@@ -1169,5 +1181,126 @@ export class PgStore implements Store {
       VALUES (${entry.actorEmail}, ${entry.action}, ${entry.targetUser ?? null},
               ${entry.detail === undefined ? null : JSON.stringify(entry.detail)}::jsonb)
     `;
+  }
+
+  // --- Admin mutations (v1b) ----------------------------------------------
+  //
+  // Both methods below are ONE statement: a CTE that performs the update and an
+  // INSERT that draws its rows from that CTE's RETURNING.
+  //
+  // This is how guardrail #2 ("every mutation writes admin_audit atomically
+  // with the change") is satisfied without a transaction block. A transaction
+  // would also work, but a single statement makes the guarantee structural
+  // rather than procedural: the audit row cannot be written unless the UPDATE
+  // returned a row, and the UPDATE cannot commit without the audit row,
+  // because they are the same statement. There is no ordering to get wrong and
+  // no early return that can skip the second half.
+  //
+  // Zero rows back means the change did not happen, and the caller gets to say
+  // why it might not have: no such user, already in that state, or the actor
+  // trying to act on themselves. All three are folded into the WHERE clause,
+  // so the guard runs where the write happens rather than in a route that a
+  // second route could forget to copy.
+
+  /**
+   * Set a user's role, recording the change.
+   *
+   * `actorEmail` is both the audit identity and the self-action guard: the
+   * WHERE clause refuses to touch a row whose email matches the operator's.
+   * Returns false when nothing changed.
+   */
+  async adminSetUserRole(params: {
+    actorEmail: string;
+    targetUserId: string;
+    role: string;
+  }): Promise<boolean> {
+    const db = requireSql();
+    const rows = (await db`
+      WITH updated AS (
+        UPDATE users
+           SET role = ${params.role}
+         WHERE id = ${params.targetUserId}
+           AND role <> ${params.role}
+           AND lower(email) <> lower(${params.actorEmail})
+        RETURNING id, role
+      )
+      INSERT INTO admin_audit (actor_email, action, target_user, detail)
+      SELECT ${params.actorEmail},
+             ${params.role === "agent" ? "promote_agent" : "demote_agent"},
+             updated.id,
+             jsonb_build_object('role', updated.role)
+        FROM updated
+      RETURNING target_user
+    `) as { target_user: string }[];
+    return rows.length > 0;
+  }
+
+  /**
+   * Set a user's status, recording the change.
+   *
+   * Suspension takes effect on the target's very next request — `status` leaves
+   * the allowlist in canActAsViewer() and their existing session stops being
+   * usable. No session invalidation step is needed, and none exists: the JWT is
+   * still cryptographically valid, it just no longer describes an account
+   * allowed to act.
+   */
+  async adminSetUserStatus(params: {
+    actorEmail: string;
+    targetUserId: string;
+    status: string;
+  }): Promise<boolean> {
+    const db = requireSql();
+    const rows = (await db`
+      WITH updated AS (
+        UPDATE users
+           SET status = ${params.status}
+         WHERE id = ${params.targetUserId}
+           AND status <> ${params.status}
+           AND lower(email) <> lower(${params.actorEmail})
+           -- Only accounts that could hold a session are suspendable. A
+           -- 'managed' or 'invited' client already cannot sign in, and
+           -- flipping one to 'suspended' would destroy the lifecycle state the
+           -- agent-accounts flow depends on to know what that row IS.
+           AND status IN ('active', 'suspended')
+        RETURNING id, status
+      )
+      INSERT INTO admin_audit (actor_email, action, target_user, detail)
+      SELECT ${params.actorEmail},
+             ${params.status === "suspended" ? "suspend" : "reactivate"},
+             updated.id,
+             jsonb_build_object('status', updated.status)
+        FROM updated
+      RETURNING target_user
+    `) as { target_user: string }[];
+    return rows.length > 0;
+  }
+
+  /** The audit trail, newest first. Read by /admin so operator actions are
+   *  visible in the product rather than only in the database. */
+  async listAdminAudit(limit = 20): Promise<AdminAuditRow[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT a.actor_email, a.action, a.target_user, a.detail, a.created_at,
+             u.name AS target_name
+      FROM admin_audit a
+      LEFT JOIN users u ON u.id = a.target_user
+      ORDER BY a.created_at DESC
+      LIMIT ${limit}
+    `) as {
+      actor_email: string;
+      action: string;
+      target_user: string | null;
+      target_name: string | null;
+      detail: unknown;
+      created_at: string;
+    }[];
+    return rows.map((r) => ({
+      actorEmail: r.actor_email,
+      action: r.action,
+      targetUser: r.target_user,
+      targetName: r.target_name,
+      detail: r.detail,
+      createdAt: r.created_at,
+    }));
   }
 }
