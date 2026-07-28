@@ -25,17 +25,31 @@ Current implementation: `src/lib/legal.ts` `AGENT_ACCESS_DISCLOSURE`, rendered b
 `src/app/claim/[token]/page.tsx`, with a separate shorter checkbox label in
 `src/components/ClaimForm.tsx`.
 
-## The accuracy problem to resolve before review
+## Accuracy — resolved 2026-07-27
 
-The draft below is written against the code **as it stands**, which means the
-bracketed `[A1/A2]` line is currently *true*: an agent can read notes derived
-from the client's Telegram conversation and the client's Telegram chat id
-(`ScopedStore.loadProfile()` returns the whole profile). See
-`PRIVACY-TOS-AGENT-DRAFT.md` §A1-A2.
+An earlier version of this draft carried a bracketed line disclosing that an
+agent could read notes derived from the client's Telegram conversation, plus the
+client's Telegram chat id. **That was fixed in code instead** (`ea7affd` —
+`ScopedStore.loadProfile()` redacts both for an agent scope), so the line is gone
+and the "they will not be able to" list gained a line saying so.
 
-I recommend fixing that rather than disclosing it. If it is fixed, delete the
-bracketed line. **Do not send this to a reviewer with the line still bracketed** —
-it changes what they are approving.
+Decision #3 is likewise answered: the agent's reports survive a disconnect, the
+client's share links do not.
+
+Every claim below is now true of the code on `phase2-invites` and covered by a
+test. The list is what makes that checkable:
+
+| Claim in the copy | Enforced by |
+|---|---|
+| Agent sees buy box, financing, bar, verdicts, reports | `src/lib/scoped-store.ts` — the whole surface |
+| Agent cannot see Telegram notes or chat id | `redactForAgent()`, `tests/scope.test.ts` |
+| Agent cannot change email/password or delete the account | `ScopedStore` has no method that touches credentials |
+| Access becomes read-only once claimed | `resolveScope` → `canEdit: clientStatus !== "active"` |
+| Disconnect any time, effective immediately | `archived_at` + `resolveScope`, `tests/scope.test.ts` |
+| Out-of-farm edit disconnects automatically | `src/lib/farm-enforcement.ts` |
+| Share links deactivate on disconnect | `PgStore.disconnectAgent` |
+
+**If any row of that table stops being true, this copy is wrong the same day.**
 
 ---
 
@@ -55,10 +69,9 @@ behind a link.
 > - Your minimum monthly cash-flow target
 > - Every listing Osprey underwrites for you, and the numbers it calculates
 > - Any property reports or share links on your account
-> `[A1/A2 — include ONLY if not fixed: - Notes about deals you've passed on,`
-> `including reasons you gave our Telegram bot]`
 >
 > **They will not be able to**
+> - Read your conversations with our Telegram bot, or the notes we keep from them
 > - Change your email address or your password
 > - Delete your account
 > - See when or how you sign in
@@ -72,13 +85,9 @@ behind a link.
 > - If you change your search to a market your agent doesn't cover, we'll
 >   disconnect them automatically and tell you.
 >
-> `[DECISION-3 — one line, replacing this:]`
-> `[3a] Reports your agent already generated stay available to them after you`
-> `disconnect.`
-> `[3b] Reports your agent generated stop being available to them when you`
-> `disconnect.`
-> `[3c] Reports and share links your agent generated stop working when you`
-> `disconnect.`
+> - Reports your agent already generated stay available to them after you
+>   disconnect. Any share links on your account stop working — you can make new
+>   ones whenever you like.
 
 ### Notes on choices in the draft
 
@@ -134,8 +143,9 @@ has its own hand-written copy, which is exactly how drift starts.
 > cash-flow target, every listing Osprey underwrites for you, and any property
 > reports on your account.
 >
-> **What they cannot do** — change your email or password, delete your account,
-> see your sign-in history, or see anything about any other Osprey user.
+> **What they cannot do** — read your Telegram conversations or the notes we
+> keep from them, change your email or password, delete your account, see your
+> sign-in history, or see anything about any other Osprey user.
 >
 > [Disconnect from {Agent name}]
 
@@ -144,8 +154,8 @@ Confirm step, on click:
 > **Disconnect from {Agent name}?**
 > They lose access to your buy box and feed immediately. Your account, buy box,
 > and history stay exactly as they are — nothing of yours is deleted.
-> `[DECISION-3: 3b/3c add — Reports they generated for you will no longer be`
-> `available to them.]`
+> Any share links on your account will stop working. Reports {Agent name}
+> generated stay with them.
 > [Yes, disconnect] [Keep my agent]
 
 ---
@@ -194,7 +204,12 @@ specific. The vagueness is the feature.
    re-entry of the agent's name)?
 2. Should the consent screen state a retention period for what the agent has
    already seen? Nothing is currently promised.
-3. `[A1/A2]` — fix or disclose. See `PRIVACY-TOS-AGENT-DRAFT.md` §A1.
-4. Should the stored `disclosure` include the checkbox label as well as the
+3. Should the stored `disclosure` include the checkbox label as well as the
    block? Today only `AGENT_ACCESS_DISCLOSURE` is stored, so the record does not
    capture the exact sentence next to the checkbox they ticked.
+4. Draft 3's Settings card and Draft 1's claim screen state the same facts in
+   different words. Is one canonical wording preferable, given the second is
+   read months after the first?
+
+The A1/A2 question that stood here is withdrawn — it was fixed in code
+(`ea7affd`) rather than disclosed.

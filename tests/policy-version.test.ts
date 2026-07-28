@@ -79,6 +79,23 @@ describe("the disclosure recorded at claim time", () => {
     expect(lower).toContain("other osprey user");
   });
 
+  it("claims the Telegram redaction that ScopedStore actually performs", () => {
+    // Paired with the redaction suite in tests/scope.test.ts: that one proves
+    // loadProfile() strips tasteNotes and telegramChatId for an agent scope,
+    // this one proves we told the client so. Deleting either without the other
+    // leaves a promise with no enforcement, or an enforcement nobody was told
+    // about. See docs/PRIVACY-TOS-AGENT-DRAFT.md §A1-A2.
+    expect(AGENT_ACCESS_DISCLOSURE.toLowerCase()).toContain("telegram");
+  });
+
+  it("says what happens to reports and share links on disconnect", () => {
+    // DECISION-3. The client is told the asymmetry up front rather than
+    // discovering it when a link they forwarded stops resolving.
+    const lower = AGENT_ACCESS_DISCLOSURE.toLowerCase();
+    expect(lower).toContain("reports your agent already generated stay");
+    expect(lower).toContain("share links on your account stop working");
+  });
+
   it("tells the client how to get out", () => {
     // §3b lists self-serve disconnect as a right we honor. A consent screen
     // that grants access without naming the exit is not informed consent.

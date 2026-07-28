@@ -15,18 +15,29 @@ Where the code does something the plan did not anticipate, that is called out in
 **July 21, 2026** (`src/lib/legal.ts` `EFFECTIVE_DATE`). Neither document
 currently contains the word "agent."
 
+## Status — ready for review as of 2026-07-27
+
+Every bracket that made an earlier version of this document unreviewable is now
+resolved. Concretely, since the first draft:
+
+- **A1, A2, A4 and A6 were fixed in code, not disclosed** (`ea7affd`). §A keeps
+  each finding, marked FIXED, because a reviewer needs to know the obligation
+  was considered and how it was discharged — and because a future change that
+  reintroduces one needs to find the reasoning.
+- **Decision #3 answered** (Dylan, 2026-07-27): the agent's reports survive a
+  disconnect; the client's share links are revoked. Implemented in
+  `PgStore.disconnectAgent`. The copy in §B3 and §B4 reflects it.
+- **A5 and A7 remain open** and are genuinely questions for counsel rather than
+  engineering — see §D.
+
 ## How to use this
 
-1. Read §A first. It contains findings from the code that were **not** part of
-   any prior discussion, and four of them may change what the product does
-   rather than only what the policy says. Some are cheap to fix and cheaper than
-   disclosing.
-2. §B and §C are the draft copy, written against the code as it stands today —
-   including the things in §A. If §A items get fixed instead of disclosed, the
-   corresponding copy comes back out.
-3. `[DECISION-3]` marks every place the unanswered reports/share-links question
-   leaves a hole. Do not let this draft be reviewed with those unresolved; a
-   reviewer signing off on bracketed text is signing off on nothing.
+1. §A is the findings register: what the code actually does, including four
+   things that were never part of the plan. Read it before the copy, so the copy
+   reads as claims you can check.
+2. §B and §C are the draft copy, written against the code as it stands today.
+3. §D is what still needs a lawyer's answer. §E is the code work that lands with
+   the reviewed copy.
 
 ---
 
@@ -35,7 +46,7 @@ currently contains the word "agent."
 Ordered by how much they change the picture. Each names the file that creates
 the obligation.
 
-### A1. An agent can read notes derived from the client's private Telegram messages
+### A1. An agent can read notes derived from the client's private Telegram messages — **FIXED**
 
 **`src/lib/scoped-store.ts:56` — `loadProfile()` returns the whole
 `InvestorProfile`, which includes `tasteNotes`.**
@@ -65,20 +76,19 @@ Note the asymmetry: the client detail page
 *authorization layer* permits it, the *UI* does not use it. Privacy obligations
 attach to what is permitted, because the UI is one commit away from changing.
 
-**Recommendation: fix rather than disclose.** Strip `tasteNotes` (and see A2)
-from the profile an agent reads, in `ScopedStore.loadProfile()`, when
-`relation === "agent_of_client"`. That is a few lines and one test, and it keeps
-a promise worth keeping. Disclosing it instead means telling clients their
-agent can read their chat notes — which I would expect to depress claim rates
-more than the feature is worth.
+**Fixed in `ea7affd`.** `ScopedStore.loadProfile()` strips `tasteNotes` and
+`telegramChatId` when `relation === "agent_of_client"`, and the agent's
+write-back path restores `tasteNotes` from storage first — otherwise the
+redaction would silently blank a field the agent was never shown. Four tests in
+`tests/scope.test.ts`. No disclosure is needed, and B2 came back out.
 
-### A2. An agent can read the client's Telegram chat identifier
+### A2. An agent can read the client's Telegram chat identifier — **FIXED**
 
 Same call, same object: `InvestorProfile.telegramChatId`
 (`src/osprey/agent/model.ts:34`). A durable personal identifier for a
 third-party messaging account. Not shown in the UI either.
 
-**Recommendation: strip alongside A1.** Same fix, same test.
+**Fixed in `ea7affd`, alongside A1.** Same redaction, same tests.
 
 ### A3. An agent can enumerate the client's share-link tokens, and that read survives claiming
 
@@ -93,12 +103,19 @@ after the relationship ends, because `resolveScope` cannot reach into a URL
 someone already has.
 
 This is not a bug — an agent forwarding a client's property analysis is the
-product working — but it is precisely the input to **decision #3**, and it makes
+product working — but it is precisely the input to **decision #3**, and it made
 "do share links survive a disconnect" a sharper question than it first looked:
-the honest answer today is that any token the agent copied survives regardless
-of what we do to the database, unless we revoke the tokens themselves.
+any token the agent copied survives regardless of what we do to the roster,
+unless we revoke the tokens themselves.
 
-### A4. The share page names the CLIENT, not the agent
+**That is why decision #3 revokes them.** `disconnectAgent()` now sets
+`revoked = true` on every one of the client's share links, which is the only
+action that reaches a URL somebody already holds. Note the scope: *all* the
+client's links, including ones they created themselves, because `share_links`
+does not record who minted a token. §B3 says so plainly rather than implying a
+narrower revocation than we actually perform.
+
+### A4. The share page names the CLIENT, not the agent — **FIXED**
 
 `src/app/r/[token]/page.tsx:100`:
 
@@ -113,10 +130,12 @@ forwarding it." That was never implemented.
 So an agent forwarding a client's share link discloses **the client's name** to
 whoever receives it. The client is not told this at any point.
 
-**Recommendation: fix, and it is also what the plan already asked for.** Not
-done on this branch because it changes behavior for existing solo users' share
-links too, and deserves its own decision rather than being smuggled into a
-policy commit.
+**Fixed in `ea7affd`.** The byline now reads
+`agent?.agentName ?? owner?.name ?? "an Osprey investor"`. A solo investor is
+both the owner and the preparer, so their share pages are unchanged — the
+earlier worry that this altered existing users' links was wrong; the fallback
+covers them exactly as before. Disclosed in §B4 as well, since the client should
+know their agent is named rather than them.
 
 ### A5. We collect personal data about people who are not users and have not consented
 
@@ -141,7 +160,7 @@ claims is never told Osprey holds their data.** No notice is ever sent — by
 design, since Osprey contacts nobody (§9). Whether that is acceptable is a
 question for counsel, not for me.
 
-### A6. Deleting a user destroys the consent record
+### A6. Deleting a user destroys the consent record — **FIXED**
 
 `client_consents.user_id ... ON DELETE CASCADE` (`db/schema.sql`). Deleting an
 account erases the evidence that consent was ever obtained.
@@ -151,10 +170,17 @@ the table exists to answer "what did they agree to, and when," and after a
 deletion it cannot. Both positions are defensible; the point is that it is
 currently decided by a foreign key rather than by anyone.
 
-**Options:** leave as-is (erasure wins); or `ON DELETE SET NULL` on `user_id`
-plus retaining `policy_version`, `disclosure`, and `created_at` as an anonymous
-record that *a* consent occurred. The second needs a retention justification in
-§13.
+**Fixed in `ea7affd`:** `ON DELETE SET NULL` on **both** `user_id` and
+`agent_user_id` — an agent deleting their account would otherwise destroy their
+clients' consent records too, which is the same failure from the other side.
+`policy_version`, `disclosure`, and `created_at` survive as an anonymous record
+that *a* consent occurred. `scripts/verify-schema.mjs` now checks the delete rule
+itself, not just nullability: a nullable column with a CASCADE fk still deletes
+the row, so the weaker check would have passed while the property was gone.
+
+The retention justification is drafted in §B5. **This is the one §A fix that a
+reviewer might want reversed** — it trades a small retention of anonymized data
+against the ability to answer "did they consent?" after deletion. Flagged in §D3.
 
 ### A7. Invite rows are retained indefinitely
 
@@ -191,17 +217,14 @@ does not see it.
 *Basis: `PgStore.createManagedClient`, `agent_clients.client_email`,
 `src/app/api/clients/route.ts`. See §A5.*
 
-### B2. §2 — amend "Messaging information"
+### B2. §2 "Messaging information" — **no change needed**
 
-`[DEPENDS ON A1/A2]` — **if we fix A1 and A2, this amendment is unnecessary** and
-the existing text stands. If we disclose instead, the current sentence ("we
-process the content of the messages you send to the bot in order to respond to
-them") is insufficient and needs:
-
-> …in order to respond to them. Where you record a preference in conversation —
-> for example a reason for passing on a property — we store that as a note on
-> your investor profile, and if your account is connected to a real-estate
-> agent, that note is visible to them.
+This section originally carried an amendment disclosing that notes derived from
+a client's Telegram conversation were visible to their agent. **A1/A2 were fixed
+instead** (`ea7affd`), so the existing sentence — "we process the content of the
+messages you send to the bot in order to respond to them" — is accurate as
+written and stands unamended. Nothing is disclosed here because nothing is
+disclosed to the agent.
 
 ### B3. New §16 "If your account is connected to a real-estate agent"
 
@@ -228,8 +251,8 @@ after renumbered — reviewer's preference.
 > your investment criteria, your financing assumptions, your minimum cash-flow
 > target, every property Osprey underwrites for you and the figures it
 > calculates, and any property reports or share links associated with your
-> account. `[IF A1/A2 NOT FIXED: add — and any preferences recorded from your
-> conversations with our Telegram bot.]`
+> account. They cannot see the messages you exchange with our Telegram bot or
+> any notes we record from them.
 >
 > **What your agent cannot do.** Your agent cannot change your email address or
 > password, cannot delete your account, cannot see your sign-in history, and
@@ -244,16 +267,14 @@ after renumbered — reviewer's preference.
 > markets, and if you change your criteria to target a market outside your
 > agent's coverage area, we disconnect them and tell you we have done so.
 >
-> `[DECISION-3 — one of the following must replace this paragraph:]`
-> `[3a] Any property reports or share links your agent generated while connected`
-> `remain available to them afterwards. Reports are analyses of properties`
-> `rather than records about you, and your agent may have relied on them in`
-> `their own work.`
-> `[3b] When the connection ends, any property reports your agent generated for`
-> `your account are no longer accessible to them.`
-> `[3c] When the connection ends, any share links created on your account are`
-> `deactivated, and any reports your agent generated are no longer accessible`
-> `to them.`
+> **What happens to reports and share links.** Any property reports your agent
+> generated while connected remain available to them. A report is an analysis of
+> a property rather than a record about you, and your agent may have relied on it
+> in their own work. Any share links on your account, however, are deactivated
+> when the connection ends — including ones you created yourself. A share link is
+> a public web address that works for anyone who has it, so deactivating every
+> link is the only way to be sure none of them keeps working. You can create new
+> ones at any time.
 >
 > **If you never claim your account.** If your agent set up an account for you
 > and you never accept an invitation, the account stays under your agent's
@@ -266,22 +287,31 @@ after renumbered — reviewer's preference.
 
 ### B4. §10 "Share links you create" — amend
 
-> `[DECISION-3]` If your account is connected to an agent, share links created on
-> your account are visible to your agent, and your agent can create share links
-> on your account while they manage it.
+> If your account is connected to an agent, share links created on your account
+> are visible to your agent, and your agent can create share links on your
+> account while they manage it. All of them are deactivated if the connection
+> ends — see §16.
 >
-> `[A4 — required only if A4 is NOT fixed:]` A share link page names the account
-> the analysis belongs to. If your agent forwards a link from your account, the
-> recipient sees your name.
+> Where an agent is connected to your account, a share link page names **your
+> agent** as the person who prepared the analysis, not you.
 
 ### B5. §13 "Data retention" — amend
 
 > Where an agent created an account for you, we retain the contact address they
 > supplied and a record of the invitation for as long as the agent relationship
-> exists, and afterwards as needed to show how the account was created. Records
-> of consent you gave when claiming an account are retained
-> `[A6: as long as your account exists / as an anonymized record after account
-> deletion — pick one]`.
+> exists, and afterwards as needed to show how the account was created. If you
+> delete your account, we keep an anonymized record that a consent was given —
+> the date, and the text you were shown — with your identifying information
+> removed. We keep it because it is the only record of what you agreed to, and
+> we cannot answer a question about that agreement without it.
+
+*Basis: `client_consents` is `ON DELETE SET NULL` on both user references as of
+`ea7affd`, and `scripts/verify-schema.mjs` asserts that. **Reviewer: this is the
+A6 decision made in code — say so if you would rather it cascaded.** A7 also
+lands here: `client_invites` rows are never deleted, so accepted, revoked, and
+expired invitations all persist indefinitely, each holding the email address the
+agent supplied. The first sentence above is what covers that; if the retention
+period needs to be finite, we need a cleanup job, which does not exist.*
 
 ---
 
@@ -332,20 +362,30 @@ definitely one for the reviewer.*
 
 ## §D. Questions for counsel
 
+These are the questions engineering cannot answer. Everything else in this
+document is either settled or a claim about the code you can check.
+
 1. **Does a managed client who never claims need to be notified** that we hold
    their name, contact address, and financial criteria? We currently never
-   contact them. (§A5)
+   contact them, by design — Osprey has no email provider and the agent delivers
+   every invitation themselves. (§A5)
 2. **Is the "agent already held this information" argument sufficient** for
    collection without consent, and does it survive us *storing* and *processing*
    it? (Plan §3b)
-3. **Consent record vs. right to erasure** — should consent rows survive account
-   deletion in anonymized form? (§A6)
-4. **Decision #3**, which is a business decision with a policy consequence, not
-   the reverse.
-5. **Does anything here change the NRS 603A.340 operator notice analysis**, given
+3. **Consent record vs. right to erasure.** We chose to keep an anonymized
+   record after account deletion (§A6, implemented). Confirm or reverse — the
+   reversal is a one-line schema change.
+4. **Does anything here change the NRS 603A.340 operator notice analysis**, given
    the new category of data about non-users?
-6. **A1** — if we do not fix it, is disclosure alone enough for onward transfer
-   of chat-derived notes to a third party?
+5. **Indefinite retention of invitation records** (§A7). `client_invites` rows,
+   each holding an email address the agent supplied, are never deleted. §B5's
+   first sentence is drafted to cover this. If a finite retention period is
+   required instead, we need a cleanup job that does not exist today.
+
+Answered since the first draft, recorded here so they are not re-opened:
+**decision #3** (business call, made 2026-07-27 — reports stay, share links are
+revoked) and **A1** (fixed rather than disclosed, so the onward-transfer question
+no longer arises).
 
 ---
 
@@ -362,6 +402,15 @@ definitely one for the reviewer.*
   checkbox label and disclosure block — see `CONSENT-SCREEN-COPY-DRAFT.md`.
 - `src/components/AgentAccessCard.tsx`: the standing "what they can see" copy in
   Settings, which must not drift from the claim-time text.
-- If A1/A2 are fixed: `ScopedStore.loadProfile()` plus a test.
-- If A4 is fixed: `src/app/r/[token]/page.tsx`.
-- If decision #3 is 3b or 3c: one statement added to `PgStore.disconnectAgent`.
+
+Already done, ahead of the copy (`ea7affd`), because none of it depended on the
+wording:
+
+- ~~A1/A2: `ScopedStore.loadProfile()` plus tests.~~
+- ~~A4: `src/app/r/[token]/page.tsx`.~~
+- ~~A6: `client_consents` delete rules + `verify-schema.mjs`.~~
+- ~~Decision #3: share-link revocation in `PgStore.disconnectAgent`.~~
+
+So when the reviewed copy lands, the remaining work is **only** copy: two
+constants, two legal pages, and three components. That was the point of doing
+the fixes first.

@@ -674,40 +674,45 @@ the reviewed copy — and that commit is the one that unblocks the flag.
 6. **§4.4 `POLICY_VERSION = "PROVISIONAL"`** with the claim path refusing to
    run against it and a test that fails only when the flag is on.
 
-### Still open
+### Settled (Dylan, 2026-07-27) — decision #3
 
 **Do the agent's reports and share links survive a disconnect?** (§5.5)
 
-Unanswered, and deliberately not blocking the build. It gates the legal copy,
-and therefore the flag — not any code that has been written.
+**Reports stay with the agent; the client's share links are revoked.**
+Implemented in `ea7affd`: one statement added to the `disconnectAgent()`
+transaction, `UPDATE share_links SET revoked = true WHERE user_id = <client>`.
+`property_reports` is untouched — those rows are keyed `(user_id, listing_id)`
+under the agent's own id and were always theirs.
 
-Where the decision lands, concretely:
+The reasoning that decided it is §A3 of `PRIVACY-TOS-AGENT-DRAFT.md`: an agent
+can enumerate a client's share tokens while the relationship is live, and those
+tokens are unauthenticated public URLs. Nothing we do to the roster reaches a
+URL somebody already copied — revoking the tokens is the only control that
+does. Reports carry no such property; they are analyses of a listing, readable
+only by an authenticated owner.
 
-| If the answer is… | What changes |
-|---|---|
-| Reports stay with the agent (recommended) | Nothing in code. `property_reports` is keyed `(user_id, listing_id)` and the agent's own rows are already theirs; `disconnectAgent()` does not touch them. |
-| Reports must be revoked on disconnect | One statement added to the `disconnectAgent()` transaction in `src/osprey/pg-store.ts`, alongside the existing invite revocation. |
-| Share links must be revoked on disconnect | One statement in the same transaction: `UPDATE share_links SET revoked = true WHERE user_id = <client>`. |
+Note the scope, which is wider than the question implied: **all** the client's
+share links are revoked, including ones they created themselves, because
+`share_links` does not record who minted a token. The consent copy and Privacy
+Policy §16 both say this plainly rather than implying a narrower revocation.
 
-All three are a single transaction in one method, which is why this was worth
-structuring for rather than waiting on. Whatever is decided must also be
-written into the Privacy Policy's agent section — §3b requires "a defined
-policy for reports and share links the agent already created," and a policy
-that exists only in code is not a defined policy.
+§3b's requirement — "a defined policy for reports and share links the agent
+already created" — is met in `docs/PRIVACY-TOS-AGENT-DRAFT.md` §B3/§B4, not only
+in code.
 
 ---
 
-## 12. Build status (2026-07-27)
+## 12. Build status (updated 2026-07-27, evening)
 
-Branch `phase2-invites`, 12 commits on top of `d23bfe2`. Not merged, not
+Branch `phase2-invites`, 15 commits on top of `d23bfe2`. Not merged, not
 deployed, flag not flipped.
 
-- 199 tests passing (was 114 on `master`); `tsc --noEmit` and `eslint` clean.
-- `npm run build` could not be verified in the sandbox: `next build` fails
-  fetching Geist, Geist Mono, and Instrument Serif from Google Fonts, which
-  the environment cannot reach. Those imports are in `src/app/layout.tsx`,
-  untouched by this branch, and the build reports no other errors. **Needs one
-  local `npm run build` to confirm.**
+- 206 tests passing (was 114 on `master`); `tsc --noEmit` and `eslint` clean.
+- **`npm run build` verified clean** on Dylan's machine — "✓ Compiled
+  successfully", full route table renders, all marketing pages still
+  static-prerendered. The earlier sandbox failure was exactly what it looked
+  like: `next/font` could not reach `fonts.googleapis.com`. No code change was
+  needed, and none was made to accommodate it.
 - `grep systemSubject` returns the same results as before this branch. Phase 2
   adds no authorization bypass.
 - New unauthenticated surface, in full: `GET /claim/[token]` (read) and
@@ -715,45 +720,37 @@ deployed, flag not flipped.
 
 ### Before this can ship
 
-Drafts for 1-2 and the runbook for 4 now exist; none of it is executed or final.
+Three of the original six are done. What remains is one human task, one console
+task, and the flag.
 
-1. Reviewed Privacy Policy + ToS with an agent-relationship section, re-dated.
-   → working draft in **`docs/PRIVACY-TOS-AGENT-DRAFT.md`**. Read its §A first:
-   six findings from the code that were not part of any prior discussion, four
-   of which may be cheaper to fix than to disclose.
-2. `POLICY_VERSION` and `EFFECTIVE_DATE` set to that date in
-   `src/lib/legal.ts`; `AGENT_ACCESS_DISCLOSURE` reworded to match it section
-   for section. → consent copy draft in
-   **`docs/CONSENT-SCREEN-COPY-DRAFT.md`**; the full list of code changes this
-   forces is in `PRIVACY-TOS-AGENT-DRAFT.md` §E.
-3. Decision on reports/share links above, reflected in both the policy and (if
-   it is not the recommended answer) `disconnectAgent()`. Both drafts mark every
-   affected sentence `[DECISION-3]` — they should not go to a reviewer with
-   those brackets unresolved.
-4. Migration rehearsed on a Neon branch per §9b — this wave is pure
-   `CREATE TABLE`, so lower risk than Phase 0's `users` ALTERs, but rehearse
-   anyway. → step-by-step runbook in
-   **`docs/PHASE-2-MIGRATION-REHEARSAL.md`**. Not executed.
-5. `npm run build` locally. Still unverified here; see below.
-6. Only then `OSPREY_AGENT_ACCOUNTS=true`.
+1. ~~`npm run build` locally.~~ **Done** — clean, see above.
+2. ~~Decision on reports/share links.~~ **Done** — decision #3 above, implemented
+   in `ea7affd`.
+3. ~~Drafts unreviewable due to unresolved brackets.~~ **Done** — every
+   `[DECISION-3]` and `[A1/A2]` bracket in both drafts is resolved, and the four
+   §A findings that were cheaper to fix than disclose were fixed in code. The
+   drafts are ready to hand to a lawyer as they stand.
+4. **Reviewed Privacy Policy + ToS with an agent-relationship section, re-dated.**
+   → **`docs/PRIVACY-TOS-AGENT-DRAFT.md`**, now with a five-question §D that is
+   genuinely all that needs a lawyer's judgment. **This is the long pole and it
+   is not an engineering task.**
+5. **`POLICY_VERSION` and `EFFECTIVE_DATE` set to that date** in
+   `src/lib/legal.ts`. `AGENT_ACCESS_DISCLOSURE` already states the substance
+   accurately (including the A1/A2 redaction and decision #3) and is asserted by
+   `tests/policy-version.test.ts`; it needs re-wording only where the reviewer
+   changes the policy's phrasing. Consent copy: **`docs/CONSENT-SCREEN-COPY-DRAFT.md`**.
+   Remaining code surface is listed in `PRIVACY-TOS-AGENT-DRAFT.md` §E — two
+   constants, two pages, three components.
+6. **Migration rehearsed on a Neon branch** per §9b. Pure `CREATE TABLE` plus,
+   as of `ea7affd`, two idempotent `ALTER`s converting `client_consents`' foreign
+   keys to `ON DELETE SET NULL` — still lower risk than Phase 0's `users`
+   ALTERs, but rehearse anyway. Runbook: **`docs/PHASE-2-MIGRATION-REHEARSAL.md`**.
+   Not executed; needs the Neon console.
+7. Only then `OSPREY_AGENT_ACCOUNTS=true`.
 
-### `npm run build` — what would need to be true to verify it
-
-Retried 2026-07-27; still fails identically. All three errors are
-`next/font` fetching Geist, Geist Mono, and Instrument Serif from
-`fonts.googleapis.com`, imported by `src/app/layout.tsx` — a file no commit on
-this branch touches. No other error is reported, and `tsc --noEmit` and
-`eslint` are both clean across `src` and `tests`.
-
-To verify, one of:
-
-- run `npm run build` on a machine with outbound access to
-  `fonts.googleapis.com` (i.e. Dylan's laptop, or CI), **or**
-- allow `fonts.googleapis.com` and `fonts.gstatic.com` in the sandbox's network
-  policy.
-
-Not worth working around in code — swapping to local font files to satisfy a
-sandbox would be a real change to production rendering made for a fake reason.
+Worth stating plainly: **even with all seven done, there are no agents.** Nothing
+in the product can grant `role = 'agent'` — it is a manual `UPDATE users` against
+production. See `docs/ADMIN-UI-PLAN.md`.
 
 ### Known gaps, deliberately left
 
