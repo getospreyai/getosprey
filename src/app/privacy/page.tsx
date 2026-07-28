@@ -65,6 +65,16 @@ export default function PrivacyPolicy() {
               have access to your plain-text password.
             </li>
             <li>
+              <span className="text-white">Information your real-estate agent provides about you</span>{" "}
+              — if a real-estate agent or brokerage uses Osprey to manage client relationships, they
+              may create an account on your behalf and enter information about you, including your
+              name, an email address at which they can reach you, and the investment criteria they
+              understand you to have: target markets, property types, price range, financing
+              assumptions, and a minimum cash-flow target. We receive this information from the
+              agent, not from you. We do not contact you about it; if your agent wants you to have
+              access to the account, they send you an invitation link themselves. See section 13.
+            </li>
+            <li>
               <span className="text-white">Investor profile</span> — the criteria you configure,
               including target markets and property types, price range, financing terms (such as
               interest rate and down payment percentage), your minimum cash-flow threshold, and any
@@ -260,10 +270,18 @@ export default function PrivacyPolicy() {
           <h2 className="text-lg font-semibold text-white">10. Share links you create</h2>
           <p className="mt-2">
             Osprey lets you create a share link to a read-only page for a property analysis. Anyone
-            who has the link can view that page without signing in, and the page displays your name
-            as the person who prepared it. Share links are unlisted and we ask search engines not to
+            who has the link can view that page without signing in, and the page displays the name of
+            the person who prepared it. Share links are unlisted and we ask search engines not to
             index them, but you should treat them as public. Only share a link with people you intend
             to see it, and revoke it from the property page when you are done.
+          </p>
+          <p className="mt-2">
+            If your account is connected to a real-estate agent, share links created on your account
+            are visible to your agent, and your agent can create share links on your account while
+            they manage it. In that case the share page names{" "}
+            <span className="text-white">your agent</span> as the person who prepared the analysis,
+            not you. All share links on your account are deactivated if the connection ends — see
+            section 13.
           </p>
         </section>
 
@@ -298,7 +316,68 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-white">13. Data retention</h2>
+          <h2 className="text-lg font-semibold text-white">
+            13. If your account is connected to a real-estate agent
+          </h2>
+          <p className="mt-2">
+            Osprey can be used by real-estate agents to manage investment criteria for their clients.
+            This section explains what that means for your information. It applies only if an agent
+            set up your account or you accepted an invitation from one.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">How the connection is made.</span> An agent can create an
+            account for you and configure it on your behalf. An account in that state has no password
+            and cannot be signed into. If your agent wants you to take control of it, they send you an
+            invitation link directly — we never send it for them. When you use that link, you choose
+            your own email address and password, you are shown exactly what your agent will be able to
+            see, and you must affirmatively agree before the account becomes yours. We record that
+            agreement, including the date and the exact text you were shown.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">What your agent can see.</span> While you are connected to an
+            agent, they can see your investment criteria, your financing assumptions, your minimum
+            cash-flow target, every property Osprey underwrites for you and the figures it calculates,
+            and any property reports or share links associated with your account. They cannot see the
+            messages you exchange with our Telegram bot or any notes we record from them.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">What your agent cannot do.</span> Your agent cannot change
+            your email address or password, cannot delete your account, cannot see your sign-in
+            history, and cannot see anything about any other Osprey user. If you set up Telegram
+            alerts, those go to you.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">Ending the connection.</span> You can disconnect from your
+            agent at any time in Settings. Your agent&apos;s access ends immediately. Your account,
+            criteria, and history are unaffected.
+          </p>
+          <p className="mt-2">
+            Your connection may also end automatically: agents cover defined geographic markets, and
+            if you change your criteria to target a market outside your agent&apos;s coverage area, we
+            disconnect them and tell you we have done so.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">What happens to reports and share links.</span> Any property
+            reports your agent generated while connected remain available to them. A report is an
+            analysis of a property rather than a record about you, and your agent may have relied on
+            it in their own work. Any share links on your account, however, are deactivated when the
+            connection ends — including ones you created yourself. A share link is a public web
+            address that works for anyone who has it, so deactivating every link is the only way to be
+            sure none of them keeps working. You can create new ones at any time.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">If you never claim your account.</span> If your agent set up
+            an account for you and you never accept an invitation, the account stays under your
+            agent&apos;s management and cannot be signed into. You may contact us at{" "}
+            <a href="mailto:privacy@getosprey.ai" className="underline hover:text-white">
+              privacy@getosprey.ai
+            </a>{" "}
+            to ask what information we hold about you or to have it deleted.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold text-white">14. Data retention</h2>
           <p className="mt-2">
             We keep your account and profile information for as long as your account is active, and
             waitlist information until you ask to be removed or we no longer need it. Property and
@@ -306,10 +385,18 @@ export default function PrivacyPolicy() {
             logs are kept for a limited period. When information is no longer needed, we delete it or
             retain it only as required by law.
           </p>
+          <p className="mt-2">
+            Where an agent created an account for you, we retain the contact address they supplied and
+            a record of the invitation for as long as the agent relationship exists, and afterwards as
+            needed to show how the account was created. If you delete your account, we keep an
+            anonymized record that a consent was given — the date, and the text you were shown — with
+            your identifying information removed. We keep it because it is the only record of what you
+            agreed to, and we cannot answer a question about that agreement without it.
+          </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-white">14. Changes to this policy</h2>
+          <h2 className="text-lg font-semibold text-white">15. Changes to this policy</h2>
           <p className="mt-2">
             We may update this policy from time to time. When we do, we will post the revised policy
             on this page and update the effective date above. If we make a material change —
@@ -322,7 +409,7 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-white">15. Contact us</h2>
+          <h2 className="text-lg font-semibold text-white">16. Contact us</h2>
           <p className="mt-2">
             Questions, requests, or concerns about this policy or your information:{" "}
             <a href="mailto:privacy@getosprey.ai" className="underline hover:text-white">

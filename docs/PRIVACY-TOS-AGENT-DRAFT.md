@@ -15,7 +15,24 @@ Where the code does something the plan did not anticipate, that is called out in
 **July 21, 2026** (`src/lib/legal.ts` `EFFECTIVE_DATE`). Neither document
 currently contains the word "agent."
 
-## Status — ready for review as of 2026-07-27
+## SHIPPED 2026-07-27 — accepted without outside counsel
+
+Dylan's call: "TOS is good to go for now." This copy went live as written, with
+the §D questions accepted on his own judgment rather than a lawyer's. Landed as
+Privacy Policy §2 (new bullet), §10 (amended), **new §13**, §14 (retention), and
+ToS §5 (amended) + **new §16**. `EFFECTIVE_DATE` and `POLICY_VERSION` are both
+`July 27, 2026`, which released the claim path — `POST /api/claim` no longer
+503s, and ship gate #5's test passes with `OSPREY_AGENT_ACCOUNTS=true`.
+
+**This document is now the record of what was decided and why, not a proposal.**
+§D is still worth a lawyer's eye when one is engaged; if any answer comes back
+differently, the copy changes AND `POLICY_VERSION` takes a new date in the same
+commit, because consent recorded against this string is consent to the text that
+was live under it.
+
+---
+
+## Status when it was written — ready for review as of 2026-07-27
 
 Every bracket that made an earlier version of this document unreviewable is now
 resolved. Concretely, since the first draft:

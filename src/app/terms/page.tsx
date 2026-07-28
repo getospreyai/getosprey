@@ -101,6 +101,12 @@ export default function TermsOfService() {
             </a>{" "}
             if you believe your account has been compromised.
           </p>
+          <p className="mt-2">
+            If a real-estate agent created your Osprey account, it is managed by them until you claim
+            it. An unclaimed account cannot be signed into. Once you claim it by setting your own
+            password, the account is yours: you are responsible for it on the same terms as any other
+            account, and your agent keeps read-only access until you disconnect them. See section 16.
+          </p>
         </section>
 
         <section>
@@ -227,7 +233,41 @@ export default function TermsOfService() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-white">16. Changes to these terms</h2>
+          <h2 className="text-lg font-semibold text-white">16. Agent and brokerage accounts</h2>
+          <p className="mt-2">If you use Osprey as a real-estate agent to manage clients:</p>
+          <p className="mt-4">
+            <span className="text-white">You are responsible for your authority to do so.</span> You
+            represent that you have a genuine professional relationship with each person you add as a
+            client, and that you are entitled to hold and enter the information you provide about
+            them. Do not add someone who is not your client.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">You deliver invitations yourself.</span> Osprey does not
+            contact your clients. You are responsible for how you send an invitation link and to whom.
+            Do not send one to anyone who has not asked you to manage their property search.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">Client accounts belong to the client.</span> Once a client
+            claims their account it is theirs. Your access is read-only, they can end it at any time,
+            and you may not attempt to retain access by any other means.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">You cover defined markets.</span> Adding a client requires
+            their criteria to sit within the markets you declare. If a client later moves outside them,
+            your access to that client ends automatically.
+          </p>
+          <p className="mt-4">
+            <span className="text-white">
+              Nothing here makes Osprey a party to your client relationship.
+            </span>{" "}
+            Osprey is an analysis tool. It is not a brokerage, is not your broker, and does not
+            supervise your relationship with your clients. Sections 3 and 4 apply to your
+            clients&apos; use of the analyses exactly as they apply to yours.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold text-white">17. Changes to these terms</h2>
           <p className="mt-2">
             We may update these terms. We will post the revised version here and update the effective
             date, and for material changes we will provide prominent notice before they take effect.
@@ -237,7 +277,7 @@ export default function TermsOfService() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-white">17. Contact</h2>
+          <h2 className="text-lg font-semibold text-white">18. Contact</h2>
           <p className="mt-2">
             Questions about these terms:{" "}
             <a href="mailto:hello@getosprey.ai" className="underline hover:text-white">

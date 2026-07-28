@@ -28,7 +28,7 @@ export const AI_DISCLAIMER = "Answers are AI-generated and may be inaccurate —
  * Hoisted here from the two pages, which each held their own copy. They were
  * in sync only because nobody had edited one of them yet.
  */
-export const EFFECTIVE_DATE = "July 21, 2026";
+export const EFFECTIVE_DATE = "July 27, 2026";
 
 /**
  * The version a consent record is written against — see client_consents.
@@ -39,21 +39,37 @@ export const EFFECTIVE_DATE = "July 21, 2026";
  * anything, and today there is no agent-relationship text to point at: neither
  * /privacy nor /terms mentions agents at all.
  *
- * So this reads PROVISIONAL, and:
+ * It read PROVISIONAL until 2026-07-27, and while it did:
  *
- *   1. the claim path refuses to run while it does (POST /api/claim returns
- *      503 rather than recording a consent it cannot describe), and
- *   2. tests/policy-version.test.ts FAILS if OSPREY_AGENT_ACCOUNTS is "true"
- *      while it does.
+ *   1. the claim path refused to run (POST /api/claim returned 503 rather than
+ *      recording a consent it could not describe), and
+ *   2. tests/policy-version.test.ts FAILED if OSPREY_AGENT_ACCOUNTS was "true".
  *
- * That is what turns the gate from a line in a planning document into a
- * failing build. When the reviewed copy lands, set this to the new effective
- * date — the same commit should update EFFECTIVE_DATE above.
+ * That is what turned the gate from a line in a planning document into a
+ * failing build, and it did its job: nothing shipped until the copy existed.
  *
- * Do not set this to a real-looking date to "unblock" anything. The whole
- * point is that it cannot be satisfied without the copy existing.
+ * **Set 2026-07-27, when the agent-relationship sections landed on /privacy
+ * (§2 bullet, §10 amendment, new §13, §14 retention) and /terms (§5 amendment,
+ * new §16).** The drafts and the reasoning behind every sentence are in
+ * docs/PRIVACY-TOS-AGENT-DRAFT.md; §D of that document lists the questions
+ * that were accepted on the operator's own judgment rather than a lawyer's.
+ *
+ * It must equal EFFECTIVE_DATE above — a consent row recording a version no
+ * page displays is not evidence of anything, and policy-version.test.ts
+ * asserts the two match now that this is no longer provisional.
+ *
+ * Any future material change to what an agent can see needs a NEW date here
+ * and on both pages, in the same commit. Consent recorded against this string
+ * is consent to the text that was live under it.
+ *
+ * Annotated `: string` rather than left to literal inference on purpose. Without
+ * it TypeScript narrows this to the literal `"July 27, 2026"` and then reports
+ * `policyVersionIsReviewed()`'s comparison as an impossible one — which would
+ * push the next person to delete the guard as dead code. It is not dead: it is
+ * what makes setting this back to PROVISIONAL a working kill switch rather than
+ * a type error.
  */
-export const POLICY_VERSION = "PROVISIONAL";
+export const POLICY_VERSION: string = "July 27, 2026";
 
 /** Whether the legal copy required by ship gate #5 has actually landed. */
 export function policyVersionIsReviewed(): boolean {
