@@ -55,4 +55,20 @@ export interface InvestorProfile {
    *  via saveProfileSettings (never touches telegramChatId) by the cron
    *  route's digest step. Undefined = never sent. */
   lastDigestAt?: string;
+  /**
+   * True when this buy box was originally configured by an agent rather than
+   * by the account's owner — required by AGENT-ACCOUNTS-PLAN.md §7 ("buy boxes
+   * created by an agent should be labelled 'set up by your agent'").
+   *
+   * SERVER-CONTROLLED. Set once, by the claim path, inside the same statement
+   * that flips the account to 'active'. It is deliberately absent from
+   * PatchProfileSchema, so PATCH /api/profile can neither set nor clear it —
+   * a user who could set it could make an ordinary self-serve buy box claim
+   * an agent had configured it, and a user who could clear it could erase the
+   * provenance the label exists to show.
+   *
+   * Historical rather than live: it stays true after a disconnect, because it
+   * records where the buy box came from, not who currently has access.
+   */
+  setUpByAgent?: boolean;
 }

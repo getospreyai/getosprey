@@ -250,6 +250,186 @@ export async function ensureSchema(): Promise<void> {
       END $$
     `,
 
+    // -------------------------------------------------------------------------
+    // Agent accounts, phase 2 (2026-07-27). Invite links + claiming.
+    // See docs/PHASE-2-INVITES-PLAN.md.
+    // -------------------------------------------------------------------------
+
+    // Per-client invite tokens. The agent mints one and delivers it themselves
+    // through whatever channel they already use with that client — Osprey sends
+    // no email (docs/AGENT-ACCOUNTS-PLAN.md §9), which is what keeps CAN-SPAM,
+    // deliverability, and the invite-spam vector out of the product entirely.
+    //
+    // token_hash, NOT the token. A raw invite token is a bearer credential for
+    // becoming someone else's account: anything that can read this table — a
+    // backup, a slow-query log, a Neon branch handed to a contractor — would
+    // otherwise be account takeover for every outstanding invite. Storing
+    // sha256 makes the table useless to a reader.
+    //
+    // Plain sha256 with no salt or KDF is correct HERE specifically because the
+    // token is 256 bits of CSPRNG output: there is no dictionary to attack, so
+    // the slow-hash argument that applies to passwords does not apply. Do not
+    // "upgrade" this to bcrypt — its 72-byte truncation and cost factor buy
+    // nothing against a random 256-bit secret.
+    sql`
+      CREATE TABLE IF NOT EXISTS client_invites (
+        id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        token_hash     TEXT NOT NULL UNIQUE,
+        agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        email          TEXT NOT NULL,
+        expires_at     TIMESTAMPTZ NOT NULL,
+        accepted_at    TIMESTAMPTZ,
+        revoked_at     TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ DEFAULT now()
+      )
+    `,
+
+    sql`
+      CREATE INDEX IF NOT EXISTS client_invites_agent_idx
+        ON client_invites (agent_user_id)
+    `,
+    sql`
+      CREATE INDEX IF NOT EXISTS client_invites_client_idx
+        ON client_invites (client_user_id)
+    `,
+
+    // At most one outstanding invite per client. Every live token is an
+    // independent theft target, so an agent who clicks "invite" four times
+    // should end up with one usable link, not four.
+    sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS client_invites_one_outstanding
+        ON client_invites (client_user_id)
+        WHERE accepted_at IS NULL AND revoked_at IS NULL
+    `,
+
+    // The recorded consent required by ship gate #5.
+    //
+    // APPEND-ONLY. A withdrawal is a new row (kind 'withdraw'), never an UPDATE
+    // or DELETE, because the question this table answers is "what did they
+    // agree to, and when" — which a mutable row cannot answer after the fact.
+    //
+    // `disclosure` stores the text shown VERBATIM rather than a reference to
+    // it. A pointer to copy that lives in a .tsx file is worthless a year later
+    // when the copy has changed; the record has to be self-contained to be
+    // evidence of anything. A few hundred bytes per claim.
+    //
+    // Deliberately NOT stored: IP address and user-agent. They are tempting as
+    // "proof", but they are additional personal data collected at the exact
+    // moment we are promising a minimal-collection posture, and Privacy Policy
+    // §2 does not disclose collecting them for this purpose. If legal review
+    // asks for them, they get added here and to the policy together.
+    //
+    // Both user references are ON DELETE SET NULL rather than CASCADE. Deleting
+    // an account must erase the person, but this table's entire job is to
+    // answer "what did they agree to, and when" — and a cascade answers that
+    // with silence at exactly the moment someone disputes consent was ever
+    // obtained. Nulling the ids erases the identifiers and keeps
+    // policy_version, disclosure, and created_at as an anonymous record that A
+    // consent occurred. See docs/PRIVACY-TOS-AGENT-DRAFT.md §A6 — the retention
+    // window for these rows belongs in the policy's retention section.
+    sql`
+      CREATE TABLE IF NOT EXISTS client_consents (
+        id             BIGSERIAL PRIMARY KEY,
+        user_id        UUID REFERENCES users(id) ON DELETE SET NULL,
+        agent_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+        kind           TEXT NOT NULL,
+        policy_version TEXT NOT NULL,
+        disclosure     TEXT NOT NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `,
+
+    // The table above ships with SET NULL, so on any database seeing it for the
+    // first time these are no-ops. They exist for the dev databases that already
+    // created it with the original NOT NULL/CASCADE definition, which
+    // CREATE TABLE IF NOT EXISTS would silently leave alone. `confdeltype = 'c'`
+    // is the cascade marker, so this converts once and then stops matching.
+    sql`ALTER TABLE client_consents ALTER COLUMN user_id       DROP NOT NULL`,
+    sql`ALTER TABLE client_consents ALTER COLUMN agent_user_id DROP NOT NULL`,
+
+    sql`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'client_consents_user_id_fkey' AND confdeltype = 'c'
+        ) THEN
+          ALTER TABLE client_consents DROP CONSTRAINT client_consents_user_id_fkey;
+          ALTER TABLE client_consents ADD CONSTRAINT client_consents_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'client_consents_agent_user_id_fkey' AND confdeltype = 'c'
+        ) THEN
+          ALTER TABLE client_consents DROP CONSTRAINT client_consents_agent_user_id_fkey;
+          ALTER TABLE client_consents ADD CONSTRAINT client_consents_agent_user_id_fkey
+            FOREIGN KEY (agent_user_id) REFERENCES users(id) ON DELETE SET NULL;
+        END IF;
+      END $$
+    `,
+
+    sql`
+      CREATE INDEX IF NOT EXISTS client_consents_user_idx
+        ON client_consents (user_id, created_at DESC)
+    `,
+
+    sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'client_consents_kind_check') THEN
+          ALTER TABLE client_consents ADD CONSTRAINT client_consents_kind_check
+            CHECK (kind IN ('agent_access', 'withdraw'));
+        END IF;
+      END $$
+    `,
+
+    // -----------------------------------------------------------------------
+    // Admin UI v1a (2026-07-27) — the operator surface. docs/ADMIN-UI-PLAN.md.
+    // -----------------------------------------------------------------------
+
+    // Append-only. No update or delete path, ever — an audit log you can edit
+    // is not an audit log.
+    //
+    // actor_email rather than a user id: the operator is identified by the env
+    // allowlist, not by a database role (ADMIN-UI-PLAN.md §3), so the email is
+    // the only identity the authorization decision was actually made on.
+    // Recording a user id would record something the check never consulted.
+    sql`
+      CREATE TABLE IF NOT EXISTS admin_audit (
+        id           BIGSERIAL PRIMARY KEY,
+        actor_email  TEXT NOT NULL,
+        action       TEXT NOT NULL,
+        target_user  UUID,
+        detail       JSONB,
+        created_at   TIMESTAMPTZ DEFAULT now()
+      )
+    `,
+
+    sql`CREATE INDEX IF NOT EXISTS admin_audit_created_idx ON admin_audit (created_at DESC)`,
+
+    // Widen the status constraint for v1b's suspend action, landed with v1a so
+    // the whole admin wave is ONE migration to rehearse. Permitting a value is
+    // not the same as being able to set it: nothing writes 'suspended' yet, and
+    // canActAsViewer() already allowlists 'active', so such a row would be
+    // refused a session the moment one can exist.
+    //
+    // Conditional on the constraint not already mentioning 'suspended' so it
+    // converts exactly once — an unconditional DROP + ADD would re-validate
+    // every row of `users` on every ensureSchema() run.
+    sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'users_status_check'
+            AND pg_get_constraintdef(oid) LIKE '%suspended%'
+        ) THEN
+          ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check;
+          ALTER TABLE users ADD CONSTRAINT users_status_check
+            CHECK (status IN ('active', 'managed', 'invited', 'suspended'));
+        END IF;
+      END $$
+    `,
+
   ]);
 
   schemaReady = true;

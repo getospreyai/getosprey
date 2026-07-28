@@ -8,7 +8,9 @@ export default function AppNav({
   showClients,
 }: {
   userName: string;
-  active: "dashboard" | "settings" | "clients";
+  /** "admin" highlights nothing — the operator surface deliberately has no nav
+   *  entry, so /admin renders the normal nav with no tab marked current. */
+  active: "dashboard" | "settings" | "clients" | "admin";
   /** Render the Clients link. Visibility only — /clients enforces its own
    *  access, so passing this wrongly cannot expose anyone's data. */
   showClients?: boolean;

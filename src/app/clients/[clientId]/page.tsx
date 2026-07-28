@@ -13,8 +13,10 @@ import { notFound, redirect } from "next/navigation";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import VerdictList from "@/components/VerdictList";
+import InviteClientCard from "@/components/InviteClientCard";
 import { resolveRequestScope } from "@/lib/request-scope";
 import { agentAccountsEnabled } from "@/lib/features";
+import { PgStore } from "@/osprey/pg-store";
 import { isScannable } from "@/osprey/agent/scannable";
 import { formatMoney } from "@/lib/format";
 import { PROPERTY_TYPE_LABELS } from "@/lib/property-labels";
@@ -44,12 +46,18 @@ export default async function ClientDetailPage({
   // page for yourself.
   if (scope.relation !== "agent_of_client") notFound();
 
-  const [profile, verdicts] = await Promise.all([
+  const [profile, verdicts, roster] = await Promise.all([
     store.loadProfile(),
     store.loadRecentVerdicts(50),
+    // The roster row carries status and contact address, which the scope does
+    // not. Read through listAgentClients so it goes through the same
+    // agent-scoped query as everything else rather than a bespoke lookup.
+    new PgStore().listAgentClients(scoped.userId),
   ]);
 
   if (!profile) notFound();
+
+  const client = roster.find((c) => c.clientUserId === clientId);
 
   const scan = isScannable(profile);
   const location =
@@ -111,6 +119,17 @@ export default async function ClientDetailPage({
             </p>
           </div>
         </div>
+
+        {client && (
+          <div className="mt-6">
+            <InviteClientCard
+              clientId={clientId}
+              clientName={profile.name}
+              clientEmail={client.clientEmail}
+              status={client.status}
+            />
+          </div>
+        )}
 
         <h2 className="mt-10 text-lg font-medium">Their feed</h2>
         <p className="mt-1 text-sm text-white/50">

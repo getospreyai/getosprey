@@ -12,6 +12,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveRequestScope } from "@/lib/request-scope";
 import { ensureSchema } from "@/lib/db";
 import { PatchProfileSchema, mergeProfileSettings } from "@/lib/profile-schema";
+import { enforceFarmOnBuyBoxWrite } from "@/lib/farm-enforcement";
+import { agentAccountsEnabled } from "@/lib/features";
+import { POLICY_VERSION } from "@/lib/legal";
+import { PgStore } from "@/osprey/pg-store";
 import { RentCastClient } from "@/osprey/engine";
 import { fetchBatch, fetchRentFor } from "@/osprey/agent/watcher";
 import { runScan, type VerdictRecord } from "@/osprey/agent/loop";
@@ -68,6 +72,29 @@ export async function POST(req: NextRequest) {
     onboarded: true,
     initialScanAt: new Date().toISOString(),
   };
+
+  // The farm rule applies to every buy-box write, not just the settings one.
+  // This route is a narrower path in practice — a managed client is created
+  // already onboarded, so they never run the wizard — but "narrower in
+  // practice" is exactly the reasoning that left withinFarm unenforced on
+  // /api/profile and produced the hole this fixes. See
+  // src/lib/farm-enforcement.ts.
+  const disconnected = agentAccountsEnabled()
+    ? await enforceFarmOnBuyBoxWrite(
+        scope.subjectId,
+        profile.buyBox,
+        new PgStore(),
+        POLICY_VERSION,
+      )
+    : null;
+
+  /** Every exit from here on carries the disconnect notice if there was one.
+   *  There are four return paths below (scans paused, no API key, scan ok,
+   *  scan failed) and a notice dropped on any of them would be a silent
+   *  disconnect — the outcome the design explicitly rules out. */
+  const respond = (payload: Record<string, unknown>) =>
+    NextResponse.json(disconnected ? { ...payload, agentDisconnected: disconnected } : payload);
+
   // Settings-only write — telegram_chat_id is owned by the webhook binding.
   await store.saveProfileSettings(profile);
 
@@ -79,13 +106,13 @@ export async function POST(req: NextRequest) {
   // above is still fully validated, saved, and marked onboarded — only the
   // scan itself is skipped.
   if (process.env.RENTCAST_ENABLED !== "true") {
-    return NextResponse.json({ ok: true, scan: null, reason: "scans_paused" });
+    return respond({ ok: true, scan: null, reason: "scans_paused" });
   }
 
   const rentcastKey = process.env.RENTCAST_API_KEY;
   if (!rentcastKey) {
     console.error("Onboarding complete: RENTCAST_API_KEY is not configured; skipping initial scan.");
-    return NextResponse.json({ ok: true, scan: null });
+    return respond({ ok: true, scan: null });
   }
 
   try {
@@ -127,9 +154,9 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    return NextResponse.json({ ok: true, scan: summary });
+    return respond({ ok: true, scan: summary });
   } catch (err) {
     console.error("Onboarding complete: initial scan failed:", err);
-    return NextResponse.json({ ok: true, scan: null });
+    return respond({ ok: true, scan: null });
   }
 }

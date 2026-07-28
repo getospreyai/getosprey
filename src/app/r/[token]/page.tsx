@@ -66,12 +66,14 @@ export default async function PublicReportPage({
     );
   }
 
-  const [owner, verdict, snapshot, reportRow, events] = await Promise.all([
+  const [owner, verdict, snapshot, reportRow, events, agent] = await Promise.all([
     store.loadProfile(shareLink.userId),
     store.loadVerdictForListing(shareLink.userId, shareLink.listingId),
     store.loadSnapshot(shareLink.listingId),
     store.getReport(shareLink.userId, shareLink.listingId),
     store.loadEventsForListing(shareLink.listingId),
+    // Who is named as preparer — see the byline below.
+    store.loadActiveAgentForClient(shareLink.userId),
   ]);
 
   const property = snapshot ? toPropertyInput(snapshot.listing) : null;
@@ -97,7 +99,16 @@ export default async function PublicReportPage({
     snapshot?.listing.formattedAddress ?? snapshot?.listing.addressLine1 ?? verdict?.address ?? "Property";
   const price = snapshot?.listing.price ?? verdict?.price;
   const propertyTypeLabel = underwriting ? PROPERTY_TYPE_LABELS[underwriting.property.propertyType] : null;
-  const ownerName = owner?.name ?? "an Osprey investor";
+  // The byline names whoever is FORWARDING this link, which is not always the
+  // account that owns the analysis (AGENT-ACCOUNTS-PLAN.md §8, and the fix for
+  // docs/PRIVACY-TOS-AGENT-DRAFT.md §A4).
+  //
+  // A solo investor is both, so nothing changes for them — `agent` is null and
+  // this reads exactly as it did before. When the owner is an agent's client,
+  // the agent is the one handing the link to a third party, and naming the
+  // client instead would disclose the client's name to a recipient who has no
+  // reason to receive it and who the client never agreed to share it with.
+  const preparerName = agent?.agentName ?? owner?.name ?? "an Osprey investor";
 
   let report = null;
   if (reportRow?.status === "ready" && reportRow.report) {
@@ -129,7 +140,7 @@ export default async function PublicReportPage({
           </span>
         )}
         <p className="mt-3 text-xs text-white/40">
-          Prepared by {ownerName} · Powered by Osprey
+          Prepared by {preparerName} · Powered by Osprey
         </p>
       </div>
 

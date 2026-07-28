@@ -1,0 +1,23 @@
+# Normalize line endings.
+#
+# Before this file existed, the working tree carried CRLF while the index
+# carried a mix, so `git status` reported all 59 tracked files as modified and
+# `git diff --stat` reported exactly 15819 insertions / 15819 deletions — the
+# whole repo, rewritten, every time. That makes every real diff unreadable and
+# every code review worthless, which is the actual cost.
+#
+# `text=auto eol=lf` stores LF in the index and checks LF out everywhere,
+# including Windows. Nothing in this toolchain (Next.js, node, vitest) cares,
+# and editors have handled LF on Windows for a decade.
+#
+# Landed alone, in its own commit, so the renormalization diff cannot hide a
+# behavioral change.
+* text=auto eol=lf
+
+# Explicitly binary — never touch these.
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

@@ -30,6 +30,31 @@ export class ScopeWriteError extends Error {
   }
 }
 
+/**
+ * Fields an agent may not read off a client's profile.
+ *
+ * `tasteNotes` are written verbatim from what the client types to the Telegram
+ * bot (`src/osprey/agent/messenger/actions.ts` appends `intent.reason`, the
+ * client's own words) — a conversation the client reasonably believes is
+ * between them and Osprey. `telegramChatId` is a durable identifier for a
+ * third-party messaging account.
+ *
+ * Neither is rendered by the client detail page today. The redaction is here
+ * anyway because privacy obligations attach to what the authorization layer
+ * PERMITS, not to what the current UI happens to use — the UI is one commit
+ * away from changing, and a promise kept by convention is not kept. Doing it
+ * at the boundary is what makes the consent screen's "what your agent can
+ * see" list true by construction.
+ *
+ * See docs/PRIVACY-TOS-AGENT-DRAFT.md §A1-A2.
+ */
+function redactForAgent(profile: InvestorProfile): InvestorProfile {
+  const { tasteNotes: _notes, telegramChatId: _chat, ...rest } = profile;
+  void _notes;
+  void _chat;
+  return rest;
+}
+
 export class ScopedStore {
   readonly scope: Scope;
   private readonly store: PgStore;
@@ -53,8 +78,10 @@ export class ScopedStore {
 
   // --- Profile -------------------------------------------------------------
 
-  loadProfile(): Promise<InvestorProfile | null> {
-    return this.store.loadProfile(this.scope.subjectId);
+  async loadProfile(): Promise<InvestorProfile | null> {
+    const profile = await this.store.loadProfile(this.scope.subjectId);
+    if (!profile) return null;
+    return this.scope.relation === "agent_of_client" ? redactForAgent(profile) : profile;
   }
 
   /** Settings-style write: never touches telegram_chat_id, which is owned by
@@ -62,7 +89,19 @@ export class ScopedStore {
    *  authorized subject so a tampered payload cannot redirect the write. */
   async saveProfileSettings(profile: InvestorProfile): Promise<void> {
     this.assertWritable();
-    return this.store.saveProfileSettings({ ...profile, id: this.scope.subjectId });
+    const next: InvestorProfile = { ...profile, id: this.scope.subjectId };
+
+    if (this.scope.relation === "agent_of_client") {
+      // The agent read this profile through loadProfile() above, so the object
+      // they are handing back has no tasteNotes — writing it verbatim would
+      // blank a field they were deliberately never shown. Restore from storage:
+      // redaction must not become deletion. (telegramChatId needs no equivalent;
+      // PgStore.saveProfileSettings drops it on every write.)
+      const stored = await this.store.loadProfile(this.scope.subjectId);
+      if (stored?.tasteNotes) next.tasteNotes = stored.tasteNotes;
+    }
+
+    return this.store.saveProfileSettings(next);
   }
 
   // --- Verdicts ------------------------------------------------------------

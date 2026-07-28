@@ -62,6 +62,26 @@ export interface ShareLinkRow {
   createdAt: string;
 }
 
+/**
+ * One row of the operator user list — account metadata ONLY.
+ *
+ * The absence of a buy box, cash-flow bar, or verdict count here is the
+ * privacy boundary from docs/ADMIN-UI-PLAN.md §4, not an oversight. Adding a
+ * financial field to this interface is a privacy-policy change; see the note
+ * above `listUsersForAdmin()`.
+ */
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  telegramBound: boolean;
+  /** Live (non-archived) roster rows where this user is the agent. */
+  clientCount: number;
+}
+
 /** Old vs new price captured by a diff-aware saveSnapshot() call. */
 export interface PriceChangeInfo {
   oldPrice: number;
@@ -506,6 +526,369 @@ export class PgStore implements Store {
     return new Map(rows.map((r) => [r.user_id, r.record]));
   }
 
+  // --- Agent accounts, phase 2: invites, claiming, consent -----------------
+
+  /**
+   * Mint an invite for a managed client.
+   *
+   * Three statements, in this order, atomically:
+   *   1. revoke any outstanding invite for this client — an agent who clicks
+   *      "invite" four times should end up with one usable link, not four
+   *      independent theft targets. This MUST precede the insert or the
+   *      client_invites_one_outstanding partial index rejects it.
+   *   2. insert the new row (hash only; the token itself never arrives here).
+   *   3. move the client to 'invited' so the roster badge tells the truth.
+   *
+   * Statement 3 is guarded on status = 'managed' rather than being
+   * unconditional: a client who has already claimed must not be dragged back
+   * to 'invited' by a stale request, which would strip their own login.
+   */
+  async mintInvite(params: {
+    agentUserId: string;
+    clientUserId: string;
+    email: string;
+    tokenHash: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const db = requireSql();
+    await db.transaction([
+      db`
+        UPDATE client_invites
+           SET revoked_at = now()
+         WHERE client_user_id = ${params.clientUserId}
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+      `,
+      db`
+        INSERT INTO client_invites
+          (token_hash, agent_user_id, client_user_id, email, expires_at)
+        VALUES
+          (${params.tokenHash}, ${params.agentUserId}, ${params.clientUserId},
+           ${params.email}, ${params.expiresAt.toISOString()})
+      `,
+      db`
+        UPDATE users SET status = 'invited'
+         WHERE id = ${params.clientUserId} AND status = 'managed'
+      `,
+    ]);
+  }
+
+  /**
+   * Revoke the outstanding invite for a client and put them back to 'managed'.
+   *
+   * The status revert is guarded on 'invited' so revoking a spent invite can
+   * never demote a client who has already claimed their account.
+   */
+  async revokeInvite(clientUserId: string): Promise<void> {
+    const db = requireSql();
+    await db.transaction([
+      db`
+        UPDATE client_invites
+           SET revoked_at = now()
+         WHERE client_user_id = ${clientUserId}
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+      `,
+      db`
+        UPDATE users SET status = 'managed'
+         WHERE id = ${clientUserId} AND status = 'invited'
+      `,
+    ]);
+  }
+
+  /**
+   * What the public claim page needs to render, or null.
+   *
+   * Read-only and deliberately thin: it returns the two display names and
+   * nothing else about the client. The caller renders ONE identical dead-link
+   * state for every failure — expired, revoked, accepted, malformed, never
+   * existed — so this must not hand back anything that could distinguish them
+   * (docs/AGENT-ACCOUNTS-PLAN.md §3a T4).
+   */
+  async loadInviteForClaim(tokenHash: string): Promise<{
+    agentUserId: string;
+    clientUserId: string;
+    agentName: string;
+    clientName: string;
+    email: string;
+  } | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT i.agent_user_id, i.client_user_id, i.email,
+             a.name AS agent_name, c.name AS client_name
+      FROM client_invites i
+      JOIN users a ON a.id = i.agent_user_id
+      JOIN users c ON c.id = i.client_user_id
+      WHERE i.token_hash  = ${tokenHash}
+        AND i.accepted_at IS NULL
+        AND i.revoked_at  IS NULL
+        AND i.expires_at  > now()
+        AND c.status      = 'invited'
+      LIMIT 1
+    `) as {
+      agent_user_id: string;
+      client_user_id: string;
+      email: string;
+      agent_name: string;
+      client_name: string;
+    }[];
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      agentUserId: row.agent_user_id,
+      clientUserId: row.client_user_id,
+      agentName: row.agent_name,
+      clientName: row.client_name,
+      email: row.email,
+    };
+  }
+
+  /**
+   * Consume an invite and claim the account. THE security-critical write.
+   *
+   * One statement, not a transaction of several, because the single-use
+   * guarantee has to be a property of the database rather than of this
+   * process. The `claimed` CTE's WHERE clause IS the validity check, so two
+   * simultaneous clicks on the same link contend on the same row and exactly
+   * one wins — no application-level locking, no read-then-write window.
+   * Everything downstream is chained off `claimed`, so when it matches nothing
+   * the rest of the statement touches nothing.
+   *
+   * Being one statement also means a UNIQUE violation on users.email (the
+   * claimer typed an address that already has an Osprey account) rolls the
+   * whole thing back and leaves the invite OUTSTANDING — so they can retry
+   * with a different address rather than being locked out by a link that is
+   * now spent. The caller still reports that failure generically; see the
+   * route for why naming it would be an enumeration oracle.
+   *
+   * Returns null when the invite was not usable. The caller must not
+   * distinguish that from any other failure in what it renders.
+   */
+  async claimInvite(params: {
+    tokenHash: string;
+    email: string;
+    passwordHash: string;
+    policyVersion: string;
+    disclosure: string;
+  }): Promise<{ clientUserId: string; agentUserId: string } | null> {
+    const db = requireSql();
+    const rows = (await db`
+      WITH claimed AS (
+        UPDATE client_invites
+           SET accepted_at = now()
+         WHERE token_hash  = ${params.tokenHash}
+           AND accepted_at IS NULL
+           AND revoked_at  IS NULL
+           AND expires_at  > now()
+        RETURNING agent_user_id, client_user_id
+      ),
+      promoted AS (
+        UPDATE users u
+           SET email         = ${params.email},
+               password_hash = ${params.passwordHash},
+               status        = 'active'
+          FROM claimed c
+         WHERE u.id = c.client_user_id
+           AND u.status = 'invited'
+        RETURNING u.id
+      ),
+      labelled AS (
+        UPDATE investor_profiles ip
+           SET profile = jsonb_set(ip.profile, '{setUpByAgent}', 'true'::jsonb, true)
+          FROM promoted p
+         WHERE ip.user_id = p.id
+        RETURNING ip.user_id
+      ),
+      consented AS (
+        INSERT INTO client_consents
+          (user_id, agent_user_id, kind, policy_version, disclosure)
+        SELECT c.client_user_id, c.agent_user_id, 'agent_access',
+               ${params.policyVersion}, ${params.disclosure}
+        FROM claimed c
+        JOIN promoted p ON p.id = c.client_user_id
+        RETURNING id
+      )
+      SELECT c.client_user_id, c.agent_user_id,
+             (SELECT count(*) FROM promoted)  AS promoted_count,
+             (SELECT count(*) FROM consented) AS consented_count,
+             (SELECT count(*) FROM labelled)  AS labelled_count
+      FROM claimed c
+    `) as {
+      client_user_id: string;
+      agent_user_id: string;
+      promoted_count: number;
+      consented_count: number;
+      labelled_count: number;
+    }[];
+
+    const row = rows[0];
+    if (!row) return null;
+
+    // The invite was usable but the user row was not 'invited', or consent did
+    // not record. Both are invariant violations rather than ordinary failures —
+    // mintInvite() sets 'invited' in the same transaction that creates the
+    // invite, so they should be unreachable. Refuse loudly in the log and
+    // generically to the caller rather than reporting a claim that did not
+    // fully happen.
+    if (Number(row.promoted_count) === 0 || Number(row.consented_count) === 0) {
+      console.error(
+        "claimInvite: invite consumed but claim incomplete",
+        {
+          clientUserId: row.client_user_id,
+          promoted: Number(row.promoted_count),
+          consented: Number(row.consented_count),
+          labelled: Number(row.labelled_count),
+        },
+      );
+      return null;
+    }
+
+    return { clientUserId: row.client_user_id, agentUserId: row.agent_user_id };
+  }
+
+  /** The agent currently holding an active roster row for this user, if any.
+   *  Drives the disconnect control in Settings. */
+  async loadActiveAgentForClient(clientUserId: string): Promise<{
+    agentUserId: string;
+    agentName: string;
+  } | null> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT ac.agent_user_id, u.name AS agent_name
+      FROM agent_clients ac
+      JOIN users u ON u.id = ac.agent_user_id
+      WHERE ac.client_user_id = ${clientUserId}
+        AND ac.archived_at IS NULL
+      LIMIT 1
+    `) as { agent_user_id: string; agent_name: string }[];
+    const row = rows[0];
+    return row ? { agentUserId: row.agent_user_id, agentName: row.agent_name } : null;
+  }
+
+  /**
+   * End the agent relationship, and record why.
+   *
+   * `archived_at` is the only thing resolveScope() consults, so setting it
+   * revokes the agent on their very next request — threat T8, handled by code
+   * that already existed before Phase 2. Any outstanding invite is revoked in
+   * the same transaction: a live token that outlives the relationship it was
+   * minted under would silently re-create it on click.
+   *
+   * `reason` distinguishes a client who chose to leave from one moved out
+   * automatically by the farm-market rule. Both are withdrawals of the agent's
+   * access and both belong in the append-only consent ledger.
+   *
+   * DECISION-3 (Dylan, 2026-07-27): the agent's REPORTS survive — they are the
+   * agent's own work product about a listing, keyed `(user_id, listing_id)`
+   * under the agent's id, so nothing here touches them. The client's SHARE
+   * LINKS do not: they are unauthenticated public URLs onto the client's
+   * property analysis, and an agent could have copied the tokens while the
+   * relationship was live (docs/PRIVACY-TOS-AGENT-DRAFT.md §A3). Revoking here
+   * is the only thing that reaches a URL someone already holds.
+   *
+   * This revokes ALL of the client's share links, not only ones the agent
+   * touched, because `share_links` does not record who created a token — and
+   * the honest version of the promise is "your links stop working," not "some
+   * of them do." The client can mint new ones immediately.
+   */
+  async disconnectAgent(params: {
+    clientUserId: string;
+    agentUserId: string;
+    policyVersion: string;
+    reason: string;
+  }): Promise<void> {
+    const db = requireSql();
+    await db.transaction([
+      db`
+        UPDATE agent_clients
+           SET archived_at = now()
+         WHERE client_user_id = ${params.clientUserId}
+           AND agent_user_id  = ${params.agentUserId}
+           AND archived_at IS NULL
+      `,
+      db`
+        UPDATE client_invites
+           SET revoked_at = now()
+         WHERE client_user_id = ${params.clientUserId}
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+      `,
+      db`
+        UPDATE share_links
+           SET revoked = true
+         WHERE user_id = ${params.clientUserId}
+           AND revoked = false
+      `,
+      db`
+        INSERT INTO client_consents
+          (user_id, agent_user_id, kind, policy_version, disclosure)
+        VALUES
+          (${params.clientUserId}, ${params.agentUserId}, 'withdraw',
+           ${params.policyVersion}, ${params.reason})
+      `,
+    ]);
+  }
+
+  /**
+   * Clients who left this agent's roster recently, and why.
+   *
+   * Exists because listAgentClients() filters on archived_at IS NULL, so a
+   * disconnected client simply vanishes from the roster. That is fine when the
+   * agent did the archiving themselves and knows why. It is not fine for the
+   * two cases where they did not: the client disconnected from Settings, or
+   * the farm rule disconnected them automatically after a buy-box move. An
+   * agent losing a client silently, with no way to find out what happened, is
+   * a support ticket that cannot be answered.
+   *
+   * The reason comes from the append-only consent ledger rather than from a
+   * column on agent_clients, so it says what was actually recorded at the time
+   * rather than a status someone could later overwrite. The LATERAL takes the
+   * newest withdrawal per client, since the ledger accumulates.
+   *
+   * The window is computed in SQL from now() rather than passed in as a Date.
+   * Every other timestamp in this table comes from the database clock, so a
+   * cutoff computed from the web server's clock could disagree with the
+   * archived_at values it is being compared against — and computing it in a
+   * server component is a render-purity violation besides.
+   */
+  async listRecentlyDisconnectedClients(
+    agentUserId: string,
+    withinDays: number,
+  ): Promise<
+    { clientUserId: string; name: string; archivedAt: string; reason: string | null }[]
+  > {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT ac.client_user_id, u.name, ac.archived_at, w.disclosure AS reason
+      FROM agent_clients ac
+      JOIN users u ON u.id = ac.client_user_id
+      LEFT JOIN LATERAL (
+        SELECT disclosure
+        FROM client_consents
+        WHERE user_id = ac.client_user_id
+          AND agent_user_id = ac.agent_user_id
+          AND kind = 'withdraw'
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) w ON true
+      WHERE ac.agent_user_id = ${agentUserId}
+        AND ac.archived_at IS NOT NULL
+        AND ac.archived_at >= now() - make_interval(days => ${withinDays})
+      ORDER BY ac.archived_at DESC
+    `) as {
+      client_user_id: string;
+      name: string;
+      archived_at: string;
+      reason: string | null;
+    }[];
+    return rows.map((r) => ({
+      clientUserId: r.client_user_id,
+      name: r.name,
+      archivedAt: r.archived_at,
+      reason: r.reason,
+    }));
+  }
+
   async loadSnapshot(listingId: string): Promise<ListingSnapshot | null> {
     const db = requireSql();
     const rows = (await db`
@@ -700,5 +1083,91 @@ export class PgStore implements Store {
       revoked: row.revoked,
       createdAt: row.created_at,
     }));
+  }
+
+  // --- Admin (operator surface) -------------------------------------------
+  //
+  // THE PRIVACY BOUNDARY IS IN THE SELECT LIST, and that is deliberate.
+  //
+  // docs/ADMIN-UI-PLAN.md §4: an operator may see account METADATA — email,
+  // name, role, status, created_at, whether Telegram is bound, client count —
+  // and may NOT see financial data: buy box, financing profiles, cash-flow bar,
+  // verdicts, property analysis, reports, share links.
+  //
+  // That line is what keeps the admin surface OUTSIDE the privacy/ToS
+  // re-review that agent accounts Phase 2 already requires. Enforcing it by
+  // rendering less in the UI would not survive one refactor. Enforcing it by
+  // never selecting the columns means a future page cannot display what it was
+  // never given. If a genuine need to cross this line appears, it is its own
+  // decision with its own copy review — not a convenience patch to this query.
+  //
+  // Note what is NOT joined: investor_profiles.profile. Only the presence of
+  // telegram_chat_id, as a boolean, which is an account fact rather than a
+  // financial one.
+
+  /**
+   * Account metadata for every user, newest first.
+   *
+   * Unpaginated. Correct at the current scale (tens of users) and wrong at a
+   * few thousand — when the list needs a scrollbar it needs a LIMIT/OFFSET and
+   * a filter, and this comment is the marker for whoever notices first.
+   */
+  async listUsersForAdmin(): Promise<AdminUserRow[]> {
+    const db = requireSql();
+    const rows = (await db`
+      SELECT u.id, u.email, u.name, u.role, u.status, u.created_at,
+             (p.telegram_chat_id IS NOT NULL) AS telegram_bound,
+             COALESCE(c.n, 0)::int            AS client_count
+      FROM users u
+      LEFT JOIN investor_profiles p ON p.user_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT count(*) AS n
+        FROM agent_clients ac
+        WHERE ac.agent_user_id = u.id AND ac.archived_at IS NULL
+      ) c ON true
+      ORDER BY u.created_at DESC
+    `) as {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      status: string;
+      created_at: string;
+      telegram_bound: boolean;
+      client_count: number;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      name: r.name,
+      role: r.role,
+      status: r.status,
+      createdAt: r.created_at,
+      telegramBound: r.telegram_bound,
+      clientCount: r.client_count,
+    }));
+  }
+
+  /**
+   * Append an operator action to the audit log.
+   *
+   * v1b onwards must call this **inside the same transaction as the change it
+   * describes** (ADMIN-UI-PLAN.md §7). An audit write that can fail
+   * independently will eventually be missing exactly the row that matters. v1a
+   * has no mutations, so this is called on its own — which is also what proves
+   * the write path works before anything depends on it.
+   */
+  async writeAdminAudit(entry: {
+    actorEmail: string;
+    action: string;
+    targetUser?: string | null;
+    detail?: unknown;
+  }): Promise<void> {
+    const db = requireSql();
+    await db`
+      INSERT INTO admin_audit (actor_email, action, target_user, detail)
+      VALUES (${entry.actorEmail}, ${entry.action}, ${entry.targetUser ?? null},
+              ${entry.detail === undefined ? null : JSON.stringify(entry.detail)}::jsonb)
+    `;
   }
 }

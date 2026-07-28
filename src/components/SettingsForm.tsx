@@ -98,6 +98,11 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
 
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  /** Set when a buy-box change moved this account outside its agent's farm
+   *  markets and disconnected them. The save SUCCEEDED — this is not an error,
+   *  it is a consequence, and it has to be visible on the same screen rather
+   *  than discovered later. See src/lib/farm-enforcement.ts. */
+  const [agentDisconnected, setAgentDisconnected] = useState("");
 
   function toggleType(t: PropertyType) {
     setPropertyTypes((prev) =>
@@ -203,6 +208,11 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
       }
 
       setStatus("success");
+      // Rides back on the write that caused it. Persisted in component state
+      // rather than a toast: losing your agent is worth leaving on screen.
+      if (typeof data?.agentDisconnected === "string") {
+        setAgentDisconnected(data.agentDisconnected);
+      }
     } catch {
       setStatus("error");
       setErrorMsg("Something went wrong. Try again.");
@@ -211,6 +221,15 @@ export default function SettingsForm({ profile }: { profile: InvestorProfile }) 
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      {agentDisconnected && (
+        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/[0.07] p-5">
+          <p className="text-sm font-medium text-amber-100">
+            Your agent was disconnected
+          </p>
+          <p className="mt-1.5 text-sm leading-6 text-amber-100/75">{agentDisconnected}</p>
+        </div>
+      )}
+
       {/* Buy box */}
       <div className={cardClass}>
         <h2 className={labelClass}>Buy box</h2>
