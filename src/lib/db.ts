@@ -319,16 +319,54 @@ export async function ensureSchema(): Promise<void> {
     // moment we are promising a minimal-collection posture, and Privacy Policy
     // §2 does not disclose collecting them for this purpose. If legal review
     // asks for them, they get added here and to the policy together.
+    //
+    // Both user references are ON DELETE SET NULL rather than CASCADE. Deleting
+    // an account must erase the person, but this table's entire job is to
+    // answer "what did they agree to, and when" — and a cascade answers that
+    // with silence at exactly the moment someone disputes consent was ever
+    // obtained. Nulling the ids erases the identifiers and keeps
+    // policy_version, disclosure, and created_at as an anonymous record that A
+    // consent occurred. See docs/PRIVACY-TOS-AGENT-DRAFT.md §A6 — the retention
+    // window for these rows belongs in the policy's retention section.
     sql`
       CREATE TABLE IF NOT EXISTS client_consents (
         id             BIGSERIAL PRIMARY KEY,
-        user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id        UUID REFERENCES users(id) ON DELETE SET NULL,
+        agent_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
         kind           TEXT NOT NULL,
         policy_version TEXT NOT NULL,
         disclosure     TEXT NOT NULL,
         created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
       )
+    `,
+
+    // The table above ships with SET NULL, so on any database seeing it for the
+    // first time these are no-ops. They exist for the dev databases that already
+    // created it with the original NOT NULL/CASCADE definition, which
+    // CREATE TABLE IF NOT EXISTS would silently leave alone. `confdeltype = 'c'`
+    // is the cascade marker, so this converts once and then stops matching.
+    sql`ALTER TABLE client_consents ALTER COLUMN user_id       DROP NOT NULL`,
+    sql`ALTER TABLE client_consents ALTER COLUMN agent_user_id DROP NOT NULL`,
+
+    sql`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'client_consents_user_id_fkey' AND confdeltype = 'c'
+        ) THEN
+          ALTER TABLE client_consents DROP CONSTRAINT client_consents_user_id_fkey;
+          ALTER TABLE client_consents ADD CONSTRAINT client_consents_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'client_consents_agent_user_id_fkey' AND confdeltype = 'c'
+        ) THEN
+          ALTER TABLE client_consents DROP CONSTRAINT client_consents_agent_user_id_fkey;
+          ALTER TABLE client_consents ADD CONSTRAINT client_consents_agent_user_id_fkey
+            FOREIGN KEY (agent_user_id) REFERENCES users(id) ON DELETE SET NULL;
+        END IF;
+      END $$
     `,
 
     sql`

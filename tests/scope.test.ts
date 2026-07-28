@@ -226,7 +226,12 @@ describe("ScopedStore — the id cannot be supplied by the caller", () => {
   });
 
   it("forces a saved profile's id to the authorized subject", async () => {
-    const inner = { saveProfileSettings: vi.fn().mockResolvedValue(undefined) };
+    const inner = {
+      saveProfileSettings: vi.fn().mockResolvedValue(undefined),
+      // An agent-scoped write re-reads the stored profile to restore the
+      // redacted fields — see the redaction suite below.
+      loadProfile: vi.fn().mockResolvedValue(null),
+    };
     const store = new ScopedStore(scope, inner as never);
 
     // A tampered payload claiming to be someone else must not redirect the write.
@@ -255,5 +260,90 @@ describe("ScopedStore — the id cannot be supplied by the caller", () => {
     ).rejects.toThrow(ScopeWriteError);
     await expect(readOnly.markReportFailed("L1")).rejects.toThrow(ScopeWriteError);
     expect(inner.createShareLink).not.toHaveBeenCalled();
+  });
+});
+
+// docs/PRIVACY-TOS-AGENT-DRAFT.md §A1-A2. The consent screen promises a
+// specific list of what an agent can see. These tests are what make that list
+// exhaustive rather than aspirational: the client detail page does not render
+// either field today, so nothing else would catch a regression that started
+// exposing them.
+describe("ScopedStore — an agent cannot read the client's private notes", () => {
+  const agentScope = {
+    viewerId: AGENT_A,
+    subjectId: CLIENT_OF_A as never,
+    relation: "agent_of_client" as const,
+    canEdit: true,
+  };
+
+  const selfScope = {
+    viewerId: CLIENT_OF_A,
+    subjectId: CLIENT_OF_A as never,
+    relation: "self" as const,
+    canEdit: true,
+  };
+
+  const storedProfile = {
+    id: CLIENT_OF_A,
+    name: "Client",
+    telegramChatId: 4242,
+    tasteNotes: ["Passed on 1905 Caviar Dr: too close to the freeway"],
+    minMonthlyCashFlow: 200,
+  };
+
+  it("strips tasteNotes and telegramChatId from an agent's read", async () => {
+    const inner = { loadProfile: vi.fn().mockResolvedValue({ ...storedProfile }) };
+    const profile = await new ScopedStore(agentScope, inner as never).loadProfile();
+
+    expect(profile).not.toHaveProperty("tasteNotes");
+    expect(profile).not.toHaveProperty("telegramChatId");
+    // The rest of the profile is untouched — this is a redaction, not a
+    // different object.
+    expect(profile).toMatchObject({ id: CLIENT_OF_A, minMonthlyCashFlow: 200 });
+  });
+
+  it("leaves the client's own read intact", async () => {
+    const inner = { loadProfile: vi.fn().mockResolvedValue({ ...storedProfile }) };
+    const profile = await new ScopedStore(selfScope, inner as never).loadProfile();
+
+    expect(profile).toMatchObject({ telegramChatId: 4242, tasteNotes: storedProfile.tasteNotes });
+  });
+
+  it("returns null without touching the redaction path", async () => {
+    const inner = { loadProfile: vi.fn().mockResolvedValue(null) };
+    await expect(new ScopedStore(agentScope, inner as never).loadProfile()).resolves.toBeNull();
+  });
+
+  // The sharp edge the redaction itself creates: the agent's write-back carries
+  // no tasteNotes, because we removed them on the way out.
+  it("restores tasteNotes on an agent write instead of blanking them", async () => {
+    const inner = {
+      loadProfile: vi.fn().mockResolvedValue({ ...storedProfile }),
+      saveProfileSettings: vi.fn().mockResolvedValue(undefined),
+    };
+    const store = new ScopedStore(agentScope, inner as never);
+
+    const asTheAgentSawIt = await store.loadProfile();
+    await store.saveProfileSettings({ ...asTheAgentSawIt!, minMonthlyCashFlow: 500 });
+
+    expect(inner.saveProfileSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: CLIENT_OF_A,
+        minMonthlyCashFlow: 500,
+        tasteNotes: storedProfile.tasteNotes,
+      }),
+    );
+  });
+
+  it("does not re-read storage on a self write", async () => {
+    const inner = {
+      loadProfile: vi.fn().mockResolvedValue({ ...storedProfile }),
+      saveProfileSettings: vi.fn().mockResolvedValue(undefined),
+    };
+    await new ScopedStore(selfScope, inner as never).saveProfileSettings({
+      ...storedProfile,
+    } as never);
+
+    expect(inner.loadProfile).not.toHaveBeenCalled();
   });
 });

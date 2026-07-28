@@ -240,15 +240,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS client_invites_one_outstanding
 -- to, and when" is not a question a mutable row can answer after the fact.
 -- `disclosure` holds the text shown verbatim — a pointer to copy in a .tsx
 -- file is worthless once that copy changes.
+-- Both user references are ON DELETE SET NULL, not CASCADE. Deleting an account
+-- must erase the person, but this table's whole job is to answer "what did they
+-- agree to, and when" — and a cascade answers it with silence exactly when
+-- someone disputes that consent was ever obtained. Nulling the ids erases the
+-- identifiers while keeping policy_version, disclosure, and created_at as an
+-- anonymous record that A consent occurred. See docs/PRIVACY-TOS-AGENT-DRAFT.md
+-- §A6; the retention window belongs in the policy's retention section.
 CREATE TABLE IF NOT EXISTS client_consents (
   id             BIGSERIAL PRIMARY KEY,
-  user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  agent_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id        UUID REFERENCES users(id) ON DELETE SET NULL,
+  agent_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
   kind           TEXT NOT NULL,   -- 'agent_access' | 'withdraw'
   policy_version TEXT NOT NULL,   -- which text they agreed to
   disclosure     TEXT NOT NULL,   -- verbatim copy of the screen shown
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- No-ops on a database that created the table above. Present for dev databases
+-- that already have the original NOT NULL/CASCADE definition, which
+-- CREATE TABLE IF NOT EXISTS leaves alone. `confdeltype = 'c'` is the cascade
+-- marker: this converts once, then stops matching.
+ALTER TABLE client_consents ALTER COLUMN user_id       DROP NOT NULL;
+ALTER TABLE client_consents ALTER COLUMN agent_user_id DROP NOT NULL;
+
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'client_consents_user_id_fkey' AND confdeltype = 'c'
+  ) THEN
+    ALTER TABLE client_consents DROP CONSTRAINT client_consents_user_id_fkey;
+    ALTER TABLE client_consents ADD CONSTRAINT client_consents_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'client_consents_agent_user_id_fkey' AND confdeltype = 'c'
+  ) THEN
+    ALTER TABLE client_consents DROP CONSTRAINT client_consents_agent_user_id_fkey;
+    ALTER TABLE client_consents ADD CONSTRAINT client_consents_agent_user_id_fkey
+      FOREIGN KEY (agent_user_id) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS client_consents_user_idx
   ON client_consents (user_id, created_at DESC);

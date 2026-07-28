@@ -55,7 +55,25 @@ const EXPECTED = [
 /** Columns that MUST be nullable for the current code to work. A migration
  *  that silently failed to drop a NOT NULL is invisible until an insert
  *  explodes in production. */
-const EXPECTED_NULLABLE = [["users", "password_hash"]];
+const EXPECTED_NULLABLE = [
+  ["users", "password_hash"],
+  // Deleting an account nulls these rather than cascading the consent row away
+  // — see EXPECTED_DELETE_RULE below and docs/PRIVACY-TOS-AGENT-DRAFT.md §A6.
+  ["client_consents", "user_id"],
+  ["client_consents", "agent_user_id"],
+];
+
+/** Foreign keys whose ON DELETE behaviour is a decision, not an accident.
+ *
+ *  The consent ledger's job is to answer "what did they agree to, and when."
+ *  A CASCADE here answers it with silence at exactly the moment it is asked —
+ *  when a deleted user disputes that consent was obtained. SET NULL erases the
+ *  identifier and keeps the anonymous record. Nullability alone does not prove
+ *  this: a nullable column with a CASCADE fk still deletes the row. */
+const EXPECTED_DELETE_RULE = [
+  ["client_consents", "user_id", "SET NULL"],
+  ["client_consents", "agent_user_id", "SET NULL"],
+];
 
 /** Columns that must NOT exist — a schema assertion in the negative.
  *
@@ -156,6 +174,32 @@ for (const [table, column] of FORBIDDEN) {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}${ok ? "  (absent)" : "  PRESENT — see PHASE-2-INVITES-PLAN.md §3.1"}`);
 }
 
+// Delete rules live in pg_constraint, not information_schema.columns, so this
+// needs its own query. confdeltype: 'c' cascade, 'n' set null, 'a' no action,
+// 'r' restrict, 'd' set default.
+const DELETE_RULES = { c: "CASCADE", n: "SET NULL", a: "NO ACTION", r: "RESTRICT", d: "SET DEFAULT" };
+const fkRows = await sql`
+  SELECT rel.relname AS table_name, att.attname AS column_name, con.confdeltype AS del
+  FROM pg_constraint con
+  JOIN pg_class rel ON rel.oid = con.conrelid
+  JOIN unnest(con.conkey) AS k(attnum) ON true
+  JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k.attnum
+  WHERE con.contype = 'f'
+`;
+const deleteRuleOf = new Map(
+  fkRows.map((r) => [`${r.table_name}.${r.column_name}`, DELETE_RULES[r.del] ?? r.del]),
+);
+
+let wrongRule = 0;
+console.log("\nExpected ON DELETE behaviour:");
+for (const [table, column, want] of EXPECTED_DELETE_RULE) {
+  const key = `${table}.${column}`;
+  const actual = deleteRuleOf.get(key);
+  const ok = actual === want;
+  if (!ok) wrongRule++;
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${key}  (want ${want}, got ${actual ?? "no FK"})`);
+}
+
 console.log("\nRow counts:");
 for (const table of COUNT_TABLES) {
   if (!rows.some((r) => r.table_name === table)) {
@@ -169,13 +213,14 @@ for (const table of COUNT_TABLES) {
   console.log(`  ${String(n).padStart(6)}  ${table}`);
 }
 
-if (missing > 0 || notNullable > 0 || forbidden > 0) {
+if (missing > 0 || notNullable > 0 || forbidden > 0 || wrongRule > 0) {
   const parts = [];
   if (missing > 0) parts.push(`${missing} expected column(s) MISSING`);
   if (notNullable > 0) parts.push(`${notNullable} column(s) STILL NOT NULL`);
   if (forbidden > 0) parts.push(`${forbidden} forbidden column(s) PRESENT`);
+  if (wrongRule > 0) parts.push(`${wrongRule} foreign key(s) with the WRONG ON DELETE rule`);
   console.error(`\nverify-schema: ${parts.join("; ")}.`);
-  if (missing > 0 || notNullable > 0) {
+  if (missing > 0 || notNullable > 0 || wrongRule > 0) {
     console.error("ensureSchema() has not fully run against this database since the migration landed.");
   }
   if (forbidden > 0) {
@@ -183,4 +228,6 @@ if (missing > 0 || notNullable > 0 || forbidden > 0) {
   }
   process.exit(1);
 }
-console.log("\nverify-schema: all expected columns present, correctly nullable, no forbidden columns.");
+console.log(
+  "\nverify-schema: all expected columns present, correctly nullable, delete rules as intended, no forbidden columns.",
+);

@@ -757,6 +757,19 @@ export class PgStore implements Store {
    * `reason` distinguishes a client who chose to leave from one moved out
    * automatically by the farm-market rule. Both are withdrawals of the agent's
    * access and both belong in the append-only consent ledger.
+   *
+   * DECISION-3 (Dylan, 2026-07-27): the agent's REPORTS survive — they are the
+   * agent's own work product about a listing, keyed `(user_id, listing_id)`
+   * under the agent's id, so nothing here touches them. The client's SHARE
+   * LINKS do not: they are unauthenticated public URLs onto the client's
+   * property analysis, and an agent could have copied the tokens while the
+   * relationship was live (docs/PRIVACY-TOS-AGENT-DRAFT.md §A3). Revoking here
+   * is the only thing that reaches a URL someone already holds.
+   *
+   * This revokes ALL of the client's share links, not only ones the agent
+   * touched, because `share_links` does not record who created a token — and
+   * the honest version of the promise is "your links stop working," not "some
+   * of them do." The client can mint new ones immediately.
    */
   async disconnectAgent(params: {
     clientUserId: string;
@@ -779,6 +792,12 @@ export class PgStore implements Store {
          WHERE client_user_id = ${params.clientUserId}
            AND accepted_at IS NULL
            AND revoked_at IS NULL
+      `,
+      db`
+        UPDATE share_links
+           SET revoked = true
+         WHERE user_id = ${params.clientUserId}
+           AND revoked = false
       `,
       db`
         INSERT INTO client_consents
