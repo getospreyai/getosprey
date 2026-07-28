@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import Backdrop from "@/components/Backdrop";
 import AppNav from "@/components/AppNav";
 import { requireAdmin } from "@/lib/require-admin";
+import { ensureSchema } from "@/lib/db";
 import { adminUiEnabled } from "@/lib/features";
 import { isSelfAction } from "@/lib/admin-actions";
 import AdminUserActions from "@/components/AdminUserActions";
@@ -128,6 +129,14 @@ export default async function AdminPage() {
   // One response for every refusal — unauthenticated, not on the allowlist, and
   // no database all look identical from outside.
   if (!admin.ok) notFound();
+
+  // Same reasoning as /r/[token]: this page can be the FIRST database entry
+  // point hit after a deploy. Reaching it requires a session, but an operator
+  // who was already signed in arrives on an existing cookie without passing
+  // through authorize() — which is where ensureSchema() normally fires. Without
+  // this, the first visit after the admin migration ships reads a table that
+  // does not exist yet and 500s.
+  await ensureSchema();
 
   const store = new PgStore();
   const users = await store.listUsersForAdmin();
